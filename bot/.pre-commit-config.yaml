@@ -1,0 +1,24 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.7
+    hooks:
+      - id: ruff-check
+        args: ["--fix"]
+        additional_dependencies: []
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: detect-private-key
+      - id: pretty-format-json
+        args: ["--autofix"]
+      - id: check-yaml
+      - id: check-toml
+
+  - repo: https://github.com/ninoseki/uv-sort
+    rev: v0.5.1
+    hooks:
+      - id: uv-sort
