@@ -16,19 +16,28 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     if [ "$MODE" = "dev" ]; then \
-        uv sync --frozen --no-install-project --group dev; \
+        uv sync --locked --group dev --no-install-project; \
     else \
-        uv sync --frozen --no-install-project; \
+        uv sync --locked --no-install-project; \
     fi
 
-ADD . /app
+
+COPY . /app
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    if [ "$MODE" = "dev" ]; then \
+        uv sync --locked --group dev; \
+    else \
+        uv sync --locked; \
+    fi
+
 
 FROM python:3.12-slim-bookworm
 
 WORKDIR /app
-COPY --from=builder --chown=app:app /app /app
+COPY --from=builder /app /app
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app"
 
-CMD python src/main.py
+CMD ["python", "src/main.py"]
