@@ -12,12 +12,16 @@ class TelegramBotSettings(BaseModel):
     use_webhook: bool = False
     webhook_base_url: str | None = None
     webhook_path: str | None = None
+    webhook_host: str | None = None
+    webhook_port: int | None = None
 
-    @field_validator("use_webhook")
+    @field_validator("use_webhook", mode="after")
     @classmethod
     def validate_use_webhook(cls, v: bool, values: ValidationInfo) -> bool:  # noqa: FBT001
-        if v and not (values.data.get("webhook_base_url") and values.data.get("webhook_path")):
-            msg = "webhook_base_url and webhook_path fields are required when use_webhook is True"
+        neccessary_fields = ["webhook_base_url", "webhook_path", "webhook_host", "webhook_port"]
+        unset_fields = [field for field in neccessary_fields if not values.data.get(field)]
+        if v and unset_fields:
+            msg = f"The following fields are required when use_webhook is True: {', '.join(unset_fields)}"
             raise ValueError(msg)
         return v
 
