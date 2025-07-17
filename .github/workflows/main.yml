@@ -3,7 +3,7 @@ name: CI/CD for donor telegram bot
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   deploy:
