@@ -38,7 +38,7 @@ jobs:
         run: |
           echo "${{ secrets.ANSIBLE_SECRETS_FILE }}" > deploy/ansible/secrets.yml
           echo "${{ secrets.ENV_FILE }}" > bot/.env
-          echo "${{ secrets.HOSTS_FILE }}" > deploy/ansible/hosts.ini
+          echo "${{ secrets.HOSTS_FILE }}" > deploy/ansible/inventory/hosts.ini
         shell: bash
 
       - name: Install ansible dependencies
