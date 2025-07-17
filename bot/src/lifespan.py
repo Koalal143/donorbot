@@ -1,13 +1,12 @@
 from aiogram import Bot
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
-from taskiq_redis import RedisScheduleSource
 
 from src.di.container import container
+from src.scheduling.source import redis_source
 
 
 async def on_startup() -> None:
-    redis_source: RedisScheduleSource = await container.get(RedisScheduleSource)
     await redis_source.startup()
 
     redis: Redis = await container.get(Redis)
