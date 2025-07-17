@@ -41,5 +41,9 @@ jobs:
           echo "${{ secrets.HOSTS_FILE }}" > deploy/ansible/hosts.ini
         shell: bash
 
+      - name: Install ansible dependencies
+        run: ansible-galaxy install -r deploy/ansible/requirements.yml
+
+
       - name: Run Ansible Playbook
         run: ansible-playbook deploy/ansible/playbook.yml -i deploy/ansible/inventory/hosts --ssh-extra-args='-o StrictHostKeyChecking=no'
