@@ -1,20 +1,7 @@
-services:
-  bot:
-    build:
-      context: bot
-      dockerfile: Dockerfile
-    env_file:
-      - bot/.env
-    ports:
-      - 8080:8080
-    networks:
-      - bot-network
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+include:
+  - docker-compose.base.yml
 
+services:
   postgres:
     image: postgres:15
     environment:
@@ -34,25 +21,5 @@ services:
     networks:
       - bot-network
 
-  redis:
-    image: redis:latest
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - bot-network
-
 volumes:
   postgres_data:
-  redis_data:
-
-networks:
-  bot-network:
-    driver: bridge
