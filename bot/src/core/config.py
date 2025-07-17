@@ -29,6 +29,27 @@ class PostgresConfig(BaseModel):
         )
 
 
+class RedisConfig(BaseModel):
+    uri_scheme: Literal["redis", "rediss"] = "redis"
+    host: str
+    port: int
+    user: str | None
+    password: SecretStr | None
+    db: int
+
+    @property
+    def url(self) -> SecretStr:
+        if self.user and not self.password:
+            msg = "Password is required when user is provided"
+            raise ValueError(msg)
+        if self.user and self.password:
+            return SecretStr(
+                f"{self.uri_scheme}://{self.user or ''}:{self.password.get_secret_value()}@{self.host}:{self.port}"
+                f"/{self.db}"
+            )
+        return SecretStr(f"{self.uri_scheme}://{self.host}:{self.port}/{self.db}")
+
+
 class TelegramBotSettings(BaseModel):
     token: SecretStr
     use_webhook: bool = False
@@ -63,6 +84,7 @@ class Settings(BaseSettings):
     )
 
     postgres: PostgresConfig
+    redis: RedisConfig
     telegram_bot: TelegramBotSettings
     mode: Literal["dev", "prod", "test"] = "prod"
 
