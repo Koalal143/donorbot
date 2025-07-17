@@ -1,0 +1,4 @@
+postgresql_version: 15
+backend_db: "donordatabase"
+postgresql_user: "postgres"
+postgresql_apt_release: jammy
