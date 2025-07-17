@@ -33,8 +33,8 @@ class RedisConfig(BaseModel):
     uri_scheme: Literal["redis", "rediss"] = "redis"
     host: str
     port: int
-    user: str | None
-    password: SecretStr | None
+    user: str | None = None
+    password: SecretStr | None = None
     db: int
 
     @property
