@@ -7,3 +7,30 @@ services:
       - bot/.env
     ports:
       - 8080:8080
+    networks:
+      - bot-network
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+
+volumes:
+  redis_data:
+
+networks:
+  bot-network:
+    driver: bridge
