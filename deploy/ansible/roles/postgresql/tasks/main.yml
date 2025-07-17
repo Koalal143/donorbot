@@ -1,0 +1,86 @@
+---
+- name: Ensure dependencies for apt over HTTPS are installed
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - dirmngr
+      - software-properties-common
+      - curl
+    state: present
+    update_cache: yes
+
+- name: Ensure pip for Python 3 is installed
+  apt:
+    name: python3-pip
+    state: present
+
+- name: Ensure psycopg2 is installed for Python 3
+  apt:
+    name: python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: Import PostgreSQL signing key (keyring method)
+  shell: |
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
+  args:
+    creates: /usr/share/keyrings/postgresql.gpg
+
+- name: Add PostgreSQL APT repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt {{ ansible_lsb.codename }}-pgdg main"
+    state: present
+    filename: 'pgdg'
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install PostgreSQL and client
+  apt:
+    name:
+      - postgresql-{{ postgresql_version }}
+      - postgresql-client-{{ postgresql_version }}
+    state: present
+
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Set PostgreSQL password
+  become_user: postgres
+  postgresql_user:
+    name: "{{ postgresql_user }}"
+    password: "{{ postgresql_password }}"
+    state: present
+
+- name: Create backend database
+  become_user: postgres
+  postgresql_db:
+    name: "{{ backend_db }}"
+    owner: "{{ postgresql_user }}"
+    state: present
+
+- name: Change listen_addresses in postgresql.conf
+  lineinfile:
+    path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
+    regexp: '^#?listen_addresses\s*='
+    line: "listen_addresses = '*'"
+    backup: yes
+
+- name: Add rule for docker network in pg_hba.conf
+  lineinfile:
+    path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
+    insertafter: '^# IPv4 local connections:'
+    line: 'host    all             all             172.17.0.0/16           scram-sha-256'
+    backup: yes
+
+- name: Restart PostgreSQL
+  service:
+    name: postgresql
+    state: restarted
