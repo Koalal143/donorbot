@@ -1,0 +1,9 @@
+services:
+  bot:
+    build:
+      context: bot
+      dockerfile: Dockerfile
+    env_file:
+      - bot/.env
+    ports:
+      - 8080:8080
