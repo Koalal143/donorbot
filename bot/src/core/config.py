@@ -52,16 +52,17 @@ class RedisConfig(BaseModel):
 
 class TelegramBotSettings(BaseModel):
     token: SecretStr
-    use_webhook: bool = False
     webhook_base_url: str | None = None
     webhook_path: str | None = None
     webhook_host: str | None = None
     webhook_port: int | None = None
+    webhook_secret_token: SecretStr | None = None
+    use_webhook: bool = False
 
     @field_validator("use_webhook", mode="after")
     @classmethod
     def validate_use_webhook(cls, v: bool, values: ValidationInfo) -> bool:  # noqa: FBT001
-        neccessary_fields = ["webhook_base_url", "webhook_path", "webhook_host", "webhook_port"]
+        neccessary_fields = ["webhook_base_url", "webhook_path", "webhook_host", "webhook_port", "webhook_secret_token"]
         unset_fields = [field for field in neccessary_fields if not values.data.get(field)]
         if v and unset_fields:
             msg = f"The following fields are required when use_webhook is True: {', '.join(unset_fields)}"
