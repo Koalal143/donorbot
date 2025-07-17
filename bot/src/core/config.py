@@ -7,6 +7,26 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PATH = Path(__file__).parent.parent
 
 
+class PostgresConfig(BaseModel):
+    user: str
+    password: SecretStr
+    host: str
+    port: int
+    db: str
+    echo: bool = False
+    naming_convention: dict = {
+        "ix": "ix_%(column_0_label)s",
+        "uq": "uq_%(table_name)s_%(column_0_name)s",
+        "ck": "ck_%(table_name)s_%(constraint_name)s",
+        "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+        "pk": "pk_%(table_name)s",
+    }
+
+    @property
+    def url(self) -> str:
+        return f"postgresql+asyncpg://{self.user}:{self.password.get_secret_value()}@{self.host}:{self.port}/{self.db}"
+
+
 class TelegramBotSettings(BaseModel):
     token: SecretStr
     use_webhook: bool = False
@@ -40,6 +60,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    postgres: PostgresConfig
     telegram_bot: TelegramBotSettings
     mode: Literal["dev", "prod", "test"] = "prod"
 
