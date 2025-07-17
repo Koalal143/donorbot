@@ -1,0 +1,65 @@
+---
+- name: Import GPG-key for Caddy
+  shell: |
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+
+- name: Set permissions for Caddy key
+  file:
+    path: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    mode: '0644'
+
+- name: Add Caddy repository file
+  shell: |
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
+  args:
+    creates: /etc/apt/sources.list.d/caddy-stable.list
+
+- name: Set permissions for Caddy repository list
+  file:
+    path: /etc/apt/sources.list.d/caddy-stable.list
+    mode: '0644'
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install caddy
+  apt:
+    name: caddy
+    state: present
+    update_cache: yes
+
+- name: Copy caddy config
+  template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Allow 80 port in ufw
+  ufw:
+    rule: allow
+    port: 80
+    proto: tcp
+    state: enabled
+
+- name: Allow 443 port in ufw
+  ufw:
+    rule: allow
+    port: 443
+    proto: tcp
+    state: enabled
+
+- name: Reload caddy
+  service:
+    name: caddy
+    state: restarted
+
+- name: Ensure caddy is running and enabled
+  service:
+    name: caddy
+    state: started
+    enabled: yes
