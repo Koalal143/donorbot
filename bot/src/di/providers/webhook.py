@@ -16,10 +16,17 @@ class WebhookProvider(Provider):
 
     @provide
     def get_simple_request_handler(self, settings: Settings, bot: Bot, dispatcher: Dispatcher) -> SimpleRequestHandler:
+        if not settings.telegram_bot.webhook_secret_token:
+            msg = "webhook_secret_token is not set"
+            raise ValueError(msg)
+        if not settings.telegram_bot.use_webhook:
+            msg = "use_webhook is not set"
+            raise ValueError(msg)
+
         return SimpleRequestHandler(
             dispatcher=dispatcher,
             bot=bot,
-            secret_token=settings.telegram_bot.token.get_secret_value(),
+            secret_token=settings.telegram_bot.webhook_secret_token.get_secret_value(),
         )
 
     @provide
