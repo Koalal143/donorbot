@@ -46,4 +46,4 @@ jobs:
 
 
       - name: Run Ansible Playbook
-        run: ansible-playbook deploy/ansible/playbook.yml -i deploy/ansible/inventory/hosts --ssh-extra-args='-o StrictHostKeyChecking=no'
+        run: ansible-playbook deploy/ansible/playbook.yml -i deploy/ansible/inventory/hosts.ini --ssh-extra-args='-o StrictHostKeyChecking=no'
