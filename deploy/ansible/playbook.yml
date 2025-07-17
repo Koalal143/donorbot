@@ -1,0 +1,13 @@
+---
+- name: Deploy Food Social Network
+  hosts: all
+  become: true
+  vars_files:
+    - group_vars/all.yml
+    - secrets.yml
+
+  roles:
+    - { role: docker, when: "'web' in group_names" }
+    - { role: postgresql, when: "'db' in group_names" }
+    - { role: app, when: "'web' in group_names" }
+    - { role: caddy, when: "'web' in group_names" }
