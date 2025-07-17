@@ -8,12 +8,7 @@ from dishka import AsyncContainer
 
 from src.core.config import Settings
 from src.di.container import container
-
-
-async def on_shutdown(container: AsyncContainer) -> None:
-    bot: Bot = await container.get(Bot)
-    await bot.delete_webhook()
-    await bot.session.close()
+from src.lifespan import on_shutdown, on_startup
 
 
 async def setup_webhook(container: AsyncContainer) -> None:
@@ -46,7 +41,10 @@ async def setup_webhook(container: AsyncContainer) -> None:
 
 async def main() -> None:
     settings: Settings = await container.get(Settings)
+
     dp: Dispatcher = await container.get(Dispatcher)
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
 
     if settings.telegram_bot.use_webhook:
         await setup_webhook(container)
