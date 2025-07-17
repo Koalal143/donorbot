@@ -1,0 +1,66 @@
+---
+- name: Ensure pip for Python 3 is installed
+  apt:
+    name: python3-pip
+    state: present
+
+- name: Ensure {{ app_dir }} directory exists
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: '0755'
+
+- name: Ensure rsync is installed on remote
+  apt:
+    name: rsync
+    state: present
+  become: true
+
+- name: Sync all sources (backend, frontend, etc) except artifacts
+  synchronize:
+    src: "{{ playbook_dir }}/../.."
+    dest: "{{ app_dir }}/"
+    delete: true
+  delegate_to: localhost
+  become: false
+
+- name: Ensure app directory exists
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: '0755'
+
+
+- name: Tear down services
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    state: absent
+    files:
+      - "{{ app_dir }}/docker-compose.yml"
+
+- name: Create and start services
+  community.docker.docker_compose_v2:
+    project_src: "{{ app_dir }}"
+    state: present
+    build: always
+    files:
+      - "{{ app_dir }}/docker-compose.yml"
+    env_files:
+      - "{{ app_dir }}/bot/.env"
+
+# - name: Get backend IP
+#   community.docker.docker_container_info:
+#     name: food-social-network-backend-1
+#   register: backend_info
+
+# - name: Debug backend_info
+#   debug:
+#     var: backend_info
+
+# - name: Set backend_host
+#   set_fact:
+#     backend_host: "{{ backend_info.containers[0].NetworkSettings.Networks.values() | list | first['IPAddress'] }}"
