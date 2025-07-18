@@ -51,8 +51,9 @@ async def name_confirmation_yes(
     dialog_manager: DialogManager,
 ) -> None:
     phone = dialog_manager.dialog_data.get("phone")
-    dialog_manager.dialog_data["phone"] = phone
-    await dialog_manager.switch_to(RegistrationSG.registration_complete)
+
+    await callback.answer("✅ Регистрация завершена! Добро пожаловать в систему.")
+    await dialog_manager.start(ProfileSG.profile_view, data={"phone": phone, "just_registered": False})
 
 
 async def name_confirmation_no(
@@ -170,15 +171,7 @@ async def privacy_consent_handler(
         )
         await donor_repository.create(new_donor)
 
-    await dialog_manager.switch_to(RegistrationSG.registration_complete)
-
-
-async def go_to_profile(
-    callback: CallbackQuery,
-    button: Button,
-    dialog_manager: DialogManager,
-) -> None:
-    phone = dialog_manager.dialog_data.get("phone")
+    await callback.answer("✅ Регистрация завершена! Добро пожаловать в систему.")
     await dialog_manager.start(ProfileSG.profile_view, data={"phone": phone, "just_registered": False})
 
 
@@ -287,14 +280,5 @@ registration_dialog = Dialog(
             on_click=privacy_consent_handler,
         ),
         state=RegistrationSG.privacy_consent,
-    ),
-    Window(
-        Const("✅ **Регистрация завершена! Добро пожаловать в систему.**"),
-        Button(
-            Const("Перейти к профилю"),
-            id="go_to_profile",
-            on_click=go_to_profile,
-        ),
-        state=RegistrationSG.registration_complete,
     ),
 )
