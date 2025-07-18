@@ -73,12 +73,27 @@
     line: "listen_addresses = '*'"
     backup: yes
 
-- name: Add rule for docker network in pg_hba.conf
+- name: Add rules for docker networks in pg_hba.conf
   lineinfile:
     path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
     insertafter: '^# IPv4 local connections:'
-    line: 'host    all             all             0.0.0.0/0            scram-sha-256'
+    line: "host    all    all    {{ item }}    scram-sha-256"
     backup: yes
+  loop:
+    - 172.17.0.0/16
+    - 172.18.0.0/16
+    - 172.19.0.0/16
+
+- name: Allow PostgreSQL connections from docker networks
+  ufw:
+    rule: allow
+    proto: tcp
+    from_ip: "{{ item }}"
+    port: 5432
+  loop:
+    - 172.17.0.0/16
+    - 172.18.0.0/16
+    - 172.19.0.0/16
 
 - name: Restart PostgreSQL
   service:
