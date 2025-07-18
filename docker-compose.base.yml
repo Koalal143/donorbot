@@ -9,6 +9,8 @@ services:
       - 8080:8080
     networks:
       - bot-network
+    volumes:
+      - ./bot/alembic:/app/alembic
     depends_on:
       redis:
         condition: service_healthy

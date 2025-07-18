@@ -1,15 +1,32 @@
-include:
-  - docker-compose.base.yml
-
 services:
+  dev-bot:
+    extends:
+      file: docker-compose.base.yml
+      service: bot
+    volumes:
+      - ./bot/alembic:/app/alembic
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    extends:
+      file: docker-compose.base.yml
+      service: scheduler
+    depends_on:
+      redis:
+        condition: service_healthy
+
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: ${POSTGRES__USER}
-      POSTGRES_PASSWORD: ${POSTGRES__PASSWORD}
-      POSTGRES_DB: ${POSTGRES__DB}
+      POSTGRES_USER: $POSTGRES__USER
+      POSTGRES_PASSWORD: $POSTGRES__PASSWORD
+      POSTGRES_DB: $POSTGRES__DB
     ports:
-      - 5434:5432
+      - 5435:5432
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -21,5 +38,16 @@ services:
     networks:
       - bot-network
 
+  redis:
+    extends:
+      file: docker-compose.base.yml
+      service: redis
+
+
 volumes:
   postgres_data:
+  redis_data:
+
+networks:
+  bot-network:
+    driver: bridge
