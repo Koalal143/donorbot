@@ -40,4 +40,4 @@ COPY --from=builder /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app"
 
-CMD python src/main.py
+CMD alembic upgrade head && python src/main.py
