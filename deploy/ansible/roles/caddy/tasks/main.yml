@@ -39,17 +39,10 @@
     group: root
     mode: 0644
 
-- name: Allow 80 port in ufw
+- name: Allow 80 and 443 port in ufw
   ufw:
     rule: allow
-    port: 80
-    proto: tcp
-    state: enabled
-
-- name: Allow 443 port in ufw
-  ufw:
-    rule: allow
-    port: 443
+    port: 80,443
     proto: tcp
     state: enabled
 
