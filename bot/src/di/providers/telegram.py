@@ -18,5 +18,5 @@ class TelegramBotProvider(Provider):
         return Bot(token=settings.telegram_bot.token.get_secret_value())
 
     @provide
-    def get_dispatcher(self, bot: Bot) -> Dispatcher:
-        return Dispatcher(bot=bot)
+    def get_dispatcher(self, bot: Bot, redis_storage: RedisStorage) -> Dispatcher:
+        return Dispatcher(bot=bot, storage=redis_storage)
