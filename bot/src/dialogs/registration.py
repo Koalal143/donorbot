@@ -24,7 +24,7 @@ async def phone_input_handler(
     donor_repository: FromDishka[DonorRepository],
 ) -> None:
     if data.strip() == "admin":
-        await dialog_manager.start(OrganizerSG.organizer_flow)
+        await dialog_manager.start(OrganizerSG.organizer_selection)
         return
 
     validation_result = validate_phone(data)

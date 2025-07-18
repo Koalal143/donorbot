@@ -13,7 +13,8 @@ class RegistrationSG(StatesGroup):
 
 
 class OrganizerSG(StatesGroup):
-    organizer_flow = State()
+    organizer_selection = State()
+    organizer_registration = State()
 
 
 class ProfileSG(StatesGroup):

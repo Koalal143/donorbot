@@ -130,3 +130,26 @@ def normalize_full_name(name: str) -> str:
 
 def normalize_student_group(group: str) -> str:
     return group.strip().upper()
+
+
+def validate_organizer_name(name: str) -> ValidationResult:
+    name = name.strip()
+    errors = []
+
+    if not name:
+        errors.append("Имя организатора не может быть пустым.")
+    else:
+        if len(name) < 2:
+            errors.append("Имя организатора должно содержать минимум 2 символа.")
+
+        if len(name) > 100:
+            errors.append("Имя организатора слишком длинное (максимум 100 символов).")
+
+        if not name.replace(" ", "").isalpha():
+            errors.append("Имя организатора должно содержать только буквы и пробелы.")
+
+    is_valid = len(errors) == 0
+    errors_text = "\n".join(f"• {error}" for error in errors)
+    error_message = f"Произошли ошибки при валидации имени организатора:\n\n{errors_text}" if not is_valid else ""
+
+    return ValidationResult(is_valid=is_valid, error_message=error_message)
