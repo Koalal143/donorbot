@@ -1,5 +1,6 @@
 from aiogram import Bot, Dispatcher
 from aiogram_dialog import setup_dialogs
+from dishka.integrations.aiogram import setup_dishka
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -14,6 +15,7 @@ async def on_startup() -> None:
     await redis.ping()
 
     dp: Dispatcher = await container.get(Dispatcher)
+    setup_dishka(container, dp)
     setup_dialogs(dp)
 
 
