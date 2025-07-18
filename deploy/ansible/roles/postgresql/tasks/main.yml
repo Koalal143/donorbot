@@ -70,7 +70,7 @@
   lineinfile:
     path: /etc/postgresql/{{ postgresql_version }}/main/postgresql.conf
     regexp: '^#?listen_addresses\s*='
-    line: "listen_addresses = '*'"
+    line: "listen_addresses = 'localhost,172.17.0.0/16,172.18.0.0/16,172.19.0.0/16'"
     backup: yes
 
 - name: Add rules for docker networks in pg_hba.conf
