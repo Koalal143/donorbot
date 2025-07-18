@@ -1,10 +1,2 @@
 include:
   - docker-compose.base.yml
-
-services:
-  bot:
-    extends:
-      file: docker-compose.base.yml
-      service: bot
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
