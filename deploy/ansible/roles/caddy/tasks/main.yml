@@ -42,9 +42,12 @@
 - name: Allow 80 and 443 port in ufw
   ufw:
     rule: allow
-    port: 80,443
+    port: "{{ item }}"
     proto: tcp
     state: enabled
+  loop:
+    - 80
+    - 443
 
 - name: Reload caddy
   service:
