@@ -63,6 +63,7 @@ lint.ignore = [
     "RUF001",  # string contrains ambigious o
     "PLR0913", # too many arguments in function signature
     "PLR2004", # Magic value used in comparison
+    "ARG005",  # unused lambda function argument. Used in dialogs when we don't need to use it
 ]
 format.skip-magic-trailing-comma = false
 
