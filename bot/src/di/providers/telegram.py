@@ -1,4 +1,6 @@
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.redis import RedisStorage
 from dishka import Provider, Scope, provide
@@ -16,7 +18,10 @@ class TelegramBotProvider(Provider):
 
     @provide
     def get_bot(self, settings: Settings) -> Bot:
-        return Bot(token=settings.telegram_bot.token.get_secret_value())
+        return Bot(
+            token=settings.telegram_bot.token.get_secret_value(),
+            default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+        )
 
     @provide
     def get_dispatcher(self, bot: Bot, redis_storage: RedisStorage) -> Dispatcher:
