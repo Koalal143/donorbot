@@ -9,7 +9,7 @@ class RegistrationSG(StatesGroup):
     donor_type_selection = State()
     student_group_input = State()
     privacy_consent = State()
-    account_access = State()
+    registration_complete = State()
 
 
 class OrganizerSG(StatesGroup):
