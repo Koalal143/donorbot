@@ -24,8 +24,6 @@ class PostgresConfig(BaseModel):
 
     @property
     def url(self) -> SecretStr:
-        a = f"postgresql+asyncpg://{self.user}:{self.password.get_secret_value()}@{self.host}:{self.port}/{self.db}"
-        print(a)  # noqa: T201
         return SecretStr(
             f"postgresql+asyncpg://{self.user}:{self.password.get_secret_value()}@{self.host}:{self.port}/{self.db}"
         )
