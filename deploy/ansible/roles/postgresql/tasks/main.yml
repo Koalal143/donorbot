@@ -77,7 +77,7 @@
   lineinfile:
     path: /etc/postgresql/{{ postgresql_version }}/main/pg_hba.conf
     insertafter: '^# IPv4 local connections:'
-    line: 'host    all             all             172.17.0.0/16           scram-sha-256'
+    line: 'host    all             all             0.0.0.0/0            scram-sha-256'
     backup: yes
 
 - name: Restart PostgreSQL
