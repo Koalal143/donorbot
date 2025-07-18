@@ -1,4 +1,5 @@
 from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.redis import RedisStorage
 from dishka import Provider, Scope, provide
 from redis.asyncio import Redis
@@ -11,7 +12,7 @@ class TelegramBotProvider(Provider):
 
     @provide
     def get_redis_storage(self, redis: Redis) -> RedisStorage:
-        return RedisStorage(redis=redis)
+        return RedisStorage(redis=redis, key_builder=DefaultKeyBuilder(with_destiny=True))
 
     @provide
     def get_bot(self, settings: Settings) -> Bot:
