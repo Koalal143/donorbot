@@ -1,4 +1,5 @@
-from aiogram import Bot
+from aiogram import Bot, Dispatcher
+from aiogram_dialog import setup_dialogs
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -11,6 +12,9 @@ async def on_startup() -> None:
 
     redis: Redis = await container.get(Redis)
     await redis.ping()
+
+    dp: Dispatcher = await container.get(Dispatcher)
+    setup_dialogs(dp)
 
 
 async def on_shutdown() -> None:
