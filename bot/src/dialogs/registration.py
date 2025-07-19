@@ -490,7 +490,7 @@ registration_dialog = Dialog(
         state=RegistrationSG.bone_marrow_donor_selection,
     ),
     Window(
-        Const("Даете ли вы согласие на обработку персональных данных?"),
+        Const("Даете ли вы согласие на обработку персональных данных? (https://drive.google.com/file/d/1UE8YN_i7ani9KgL8MMJz-MRrSn1SDaIv/view?usp=drive_link)"),
         Button(
             Const("Даю согласие"),
             id="privacy_consent",
