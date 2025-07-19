@@ -34,6 +34,9 @@ class OrganizerSG(StatesGroup):
     donor_add_help = State()
     statistics_management = State()
     communication_management = State()
+    mailing_category_selection = State()
+    mailing_message_input = State()
+    mailing_confirmation = State()
 
 
 class ProfileSG(StatesGroup):

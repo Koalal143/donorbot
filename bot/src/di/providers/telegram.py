@@ -7,6 +7,7 @@ from dishka import Provider, Scope, provide
 from redis.asyncio import Redis
 
 from src.core.config import Settings
+from src.services.notification_service import NotificationService
 
 
 class TelegramBotProvider(Provider):
@@ -26,3 +27,7 @@ class TelegramBotProvider(Provider):
     @provide
     def get_dispatcher(self, bot: Bot, redis_storage: RedisStorage) -> Dispatcher:
         return Dispatcher(bot=bot, storage=redis_storage)
+
+    @provide(scope=Scope.REQUEST)
+    def get_notification_service(self, bot: Bot) -> NotificationService:
+        return NotificationService(bot)

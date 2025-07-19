@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
 from src.enums.donor_type import DonorType
+from src.models.donation import Donation
 from src.models.donor import Donor
+from src.models.donor_day import DonorDay
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -135,5 +138,53 @@ class DonorRepository:
 
     async def get_bone_marrow_donors(self) -> list[Donor]:
         query = select(Donor).where(Donor.is_bone_marrow_donor)
+        result = await self.session.scalars(query)
+        return list(result.all())
+
+    async def get_donors_registered_for_upcoming_donor_day(self, organizer_id: int) -> list[Donor]:
+        """Получить доноров, зарегистрированных на ближайшую дату ДД конкретного организатора"""
+        query = (
+            select(Donor)
+            .join(Donation, Donor.id == Donation.donor_id)
+            .join(DonorDay, Donation.donor_day_id == DonorDay.id)
+            .where(
+                DonorDay.organizer_id == organizer_id,
+                DonorDay.event_datetime >= datetime.now(UTC),
+                Donor.telegram_id.is_not(None),
+            )
+            .distinct()
+        )
+        result = await self.session.scalars(query)
+        return list(result.all())
+
+    async def get_donors_not_registered_for_upcoming_dates(self, organizer_id: int) -> list[Donor]:
+        organizer_donors_query = (
+            select(Donor.id)
+            .join(Donation, Donor.id == Donation.donor_id)
+            .join(DonorDay, Donation.donor_day_id == DonorDay.id)
+            .where(DonorDay.organizer_id == organizer_id, Donor.telegram_id.is_not(None))
+            .distinct()
+        )
+
+        registered_for_upcoming_query = (
+            select(Donor.id)
+            .join(Donation, Donor.id == Donation.donor_id)
+            .join(DonorDay, Donation.donor_day_id == DonorDay.id)
+            .where(DonorDay.organizer_id == organizer_id, DonorDay.event_datetime >= datetime.now(UTC))
+            .distinct()
+        )
+
+        query = select(Donor).where(Donor.id.in_(organizer_donors_query), ~Donor.id.in_(registered_for_upcoming_query))
+        result = await self.session.scalars(query)
+        return list(result.all())
+
+    async def get_donors_registered_but_not_confirmed(self, organizer_id: int) -> list[Donor]:
+        query = (
+            select(Donor)
+            .join(Donation, Donor.id == Donation.donor_id)
+            .join(DonorDay, Donation.donor_day_id == DonorDay.id)
+            .where(DonorDay.organizer_id == organizer_id, not Donation.is_confirmed, Donor.telegram_id.is_not(None))
+            .distinct()
+        )
         result = await self.session.scalars(query)
         return list(result.all())

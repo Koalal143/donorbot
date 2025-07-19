@@ -1,6 +1,8 @@
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from src.repositories.donor import DonorRepository
+
 
 class NotificationService:
     def __init__(self, bot: Bot) -> None:
@@ -84,3 +86,41 @@ class NotificationService:
                 failed_count += 1
 
         return {"success": success_count, "failed": failed_count}
+
+    async def send_bulk_message(self, donors: list, message_text: str, organizer_name: str) -> dict[str, int]:
+        """Отправить массовое сообщение списку доноров"""
+        success_count = 0
+        failed_count = 0
+
+        for donor in donors:
+            if not donor.telegram_id:
+                failed_count += 1
+                continue
+
+            formatted_message = f"📢 **Сообщение от {organizer_name}**\n\n{message_text}"
+            await self.bot.send_message(chat_id=donor.telegram_id, text=formatted_message, parse_mode="Markdown")
+            success_count += 1
+
+        return {"success": success_count, "failed": failed_count}
+
+    async def send_mailing_to_category(
+        self,
+        category: str,
+        message_text: str,
+        organizer_id: int,
+        organizer_name: str,
+        donor_repository: DonorRepository,
+    ) -> dict[str, int]:
+        """Отправить рассылку по выбранной категории доноров"""
+        donors = []
+
+        if category == "upcoming_registered":
+            donors = await donor_repository.get_donors_registered_for_upcoming_donor_day(organizer_id)
+        elif category == "not_registered":
+            donors = await donor_repository.get_donors_not_registered_for_upcoming_dates(organizer_id)
+        elif category == "registered_not_confirmed":
+            donors = await donor_repository.get_donors_registered_but_not_confirmed(organizer_id)
+        elif category == "bone_marrow":
+            donors = await donor_repository.get_bone_marrow_donors()
+
+        return await self.send_bulk_message(donors, message_text, organizer_name)

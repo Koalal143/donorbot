@@ -33,6 +33,7 @@ from src.dialogs.validators import (
 from src.models.donor_day import DonorDay
 from src.models.organizer import Organizer
 from src.repositories.donation import DonationRepository
+from src.repositories.donor import DonorRepository
 from src.repositories.donor_day import DonorDayRepository
 from src.repositories.organizer import OrganizerRepository
 from src.services.notification_service import NotificationService
@@ -146,7 +147,7 @@ async def communication_management_handler(
     button: Button,
     dialog_manager: DialogManager,
 ) -> None:
-    await callback.answer("Управление коммуникациями - в разработке")
+    await dialog_manager.switch_to(OrganizerSG.communication_management)
 
 
 @inject
@@ -368,6 +369,133 @@ async def get_organizer_donor_days_data(
         "donor_days": donor_days_list,
         "has_donor_days": len(donor_days_list) > 0,
         "use_scroll": len(donor_days_list) > 10,
+    }
+
+
+# Обработчики для рассылок
+async def go_to_communication_management(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.communication_management)
+
+
+async def go_to_mailing_category_selection(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.mailing_category_selection)
+
+
+async def mailing_category_selected(
+    callback: CallbackQuery,
+    widget: Select,
+    dialog_manager: DialogManager,
+    item_id: str,
+) -> None:
+    dialog_manager.dialog_data["selected_mailing_category"] = item_id
+    await dialog_manager.switch_to(OrganizerSG.mailing_message_input)
+
+
+@inject
+async def mailing_message_input_handler(
+    message: Message,
+    widget: ManagedTextInput,
+    dialog_manager: DialogManager,
+    data: str,
+    **kwargs: Any,
+) -> None:
+    message_text = data.strip()
+    if not message_text:
+        await message.answer("Сообщение не может быть пустым.")
+        return
+
+    if len(message_text) > 4000:
+        await message.answer("Сообщение слишком длинное. Максимум 4000 символов.")
+        return
+
+    dialog_manager.dialog_data["mailing_message"] = message_text
+    await dialog_manager.switch_to(OrganizerSG.mailing_confirmation)
+
+
+@inject
+async def send_mailing_confirmed(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+    donor_repository: FromDishka[DonorRepository],
+    organizer_repository: FromDishka[OrganizerRepository],
+    notification_service: FromDishka[NotificationService],
+) -> None:
+    organizer_id = dialog_manager.dialog_data.get("selected_organizer_id")
+    category = dialog_manager.dialog_data.get("selected_mailing_category")
+    message_text = dialog_manager.dialog_data.get("mailing_message")
+
+    if not organizer_id or not category or not message_text:
+        await callback.answer("Ошибка: не все данные заполнены")
+        return
+
+    organizer = await organizer_repository.get_by_id(organizer_id)
+    if not organizer:
+        await callback.answer("Ошибка: организатор не найден")
+        return
+
+    result = await notification_service.send_mailing_to_category(
+        category=category,
+        message_text=message_text,
+        organizer_id=organizer_id,
+        organizer_name=organizer.name,
+        donor_repository=donor_repository,
+    )
+
+    success_count = result["success"]
+    failed_count = result["failed"]
+
+    await callback.answer(f"✅ Рассылка завершена!\nОтправлено: {success_count}\nОшибок: {failed_count}")
+
+    await dialog_manager.switch_to(OrganizerSG.communication_management)
+
+
+async def cancel_mailing(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.communication_management)
+
+
+async def get_mailing_categories_data(dialog_manager: DialogManager, **kwargs: Any) -> dict[str, Any]:
+    categories = [
+        ("upcoming_registered", "📅 Зарегистрированные на ближайшую дату ДД"),
+        ("not_registered", "❌ Не зарегистрированные на ближайшие даты ДД"),
+        ("registered_not_confirmed", "⏳ Зарегистрированные, но не подтвержденные"),
+        ("bone_marrow", "🦴 Доноры костного мозга (ДКМ)"),
+    ]
+
+    return {
+        "categories": categories,
+        "has_categories": len(categories) > 0,
+    }
+
+
+async def get_mailing_confirmation_data(dialog_manager: DialogManager, **kwargs: Any) -> dict[str, Any]:
+    category = dialog_manager.dialog_data.get("selected_mailing_category", "")
+    message_text = dialog_manager.dialog_data.get("mailing_message", "")
+
+    category_names = {
+        "upcoming_registered": "Зарегистрированные на ближайшую дату ДД",
+        "not_registered": "Не зарегистрированные на ближайшие даты ДД",
+        "registered_not_confirmed": "Зарегистрированные, но не подтвержденные",
+        "bone_marrow": "Доноры костного мозга (ДКМ)",
+    }
+
+    category_name = category_names.get(category, "Неизвестная категория")
+
+    return {
+        "category_name": category_name,
+        "message_text": message_text,
     }
 
 
@@ -604,18 +732,6 @@ organizer_dialog = Dialog(
         state=OrganizerSG.statistics_management,
     ),
     Window(
-        Const(
-            "💬 **Управление коммуникациями**\n\n• Автоматическая рассылка по категориям доноров\n• "
-            "Ответы на вопросы в чате поддержки\n• Управление уведомлениями"
-        ),
-        Button(
-            Const("🔙 Назад в меню"),
-            id="back_to_menu",
-            on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.organizer_menu),
-        ),
-        state=OrganizerSG.communication_management,
-    ),
-    Window(
         Const("🔍 **Поиск донора для редактирования**\n\nВведите ФИО или номер телефона донора:"),
         TextInput(
             id="donor_search_input",
@@ -840,5 +956,95 @@ organizer_dialog = Dialog(
             ),
         ),
         state=OrganizerSG.donor_add_help,
+    ),
+    Window(
+        Const("📢 **Управление рассылками**\n\nВыберите действие:"),
+        Group(
+            Row(
+                Button(
+                    Const("📤 Создать рассылку"),
+                    id="create_mailing",
+                    on_click=go_to_mailing_category_selection,
+                ),
+            ),
+            Row(
+                Button(
+                    Const("🔙 Назад к меню"),
+                    id="back_to_organizer_menu_from_communication",
+                    on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.organizer_menu),
+                ),
+            ),
+        ),
+        state=OrganizerSG.communication_management,
+    ),
+    Window(
+        Const("📋 **Выбор категории получателей**\n\nВыберите категорию доноров для рассылки:"),
+        ScrollingGroup(
+            Select(
+                Format("{item[1]}"),
+                items="categories",
+                item_id_getter=lambda item: item[0],
+                id="category_select",
+                on_click=mailing_category_selected,
+            ),
+            id="categories_scroll",
+            width=1,
+            height=4,
+            when="has_categories",
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("🔙 Назад"),
+                    id="back_to_communication_management",
+                    on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.communication_management),
+                ),
+            ),
+        ),
+        state=OrganizerSG.mailing_category_selection,
+        getter=get_mailing_categories_data,
+    ),
+    Window(
+        Const(
+            "✍️ **Введите текст сообщения**\n\nНапишите сообщение, которое будет отправлено выбранной категории доноров:"
+        ),
+        TextInput(
+            id="mailing_message_input",
+            on_success=mailing_message_input_handler,
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("🔙 Назад"),
+                    id="back_to_category_selection",
+                    on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.mailing_category_selection),
+                ),
+            ),
+        ),
+        state=OrganizerSG.mailing_message_input,
+    ),
+    Window(
+        Format(
+            "📋 **Подтверждение рассылки**\n\n"
+            "**Категория получателей:** {category_name}\n\n"
+            "**Текст сообщения:**\n{message_text}\n\n"
+            "Отправить рассылку?"
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("✅ Отправить"),
+                    id="confirm_send_mailing",
+                    on_click=send_mailing_confirmed,
+                ),
+                Button(
+                    Const("❌ Отменить"),
+                    id="cancel_mailing",
+                    on_click=cancel_mailing,
+                ),
+            ),
+        ),
+        state=OrganizerSG.mailing_confirmation,
+        getter=get_mailing_confirmation_data,
     ),
 )
