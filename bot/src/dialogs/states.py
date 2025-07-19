@@ -25,6 +25,12 @@ class OrganizerSG(StatesGroup):
     donor_days_list = State()
     donor_day_cancel_confirmation = State()
     donor_data_management = State()
+    donor_search_input = State()
+    donor_selection = State()
+    donor_edit_template = State()
+    donor_edit_help = State()
+    donor_add_input = State()
+    donor_add_help = State()
     statistics_management = State()
     communication_management = State()
 

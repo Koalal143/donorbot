@@ -1,5 +1,6 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from aiogram.types import CallbackQuery, Message
 from aiogram_dialog import Dialog, DialogManager, Window
@@ -10,10 +11,18 @@ from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 
 from src.dialogs.states import OrganizerSG
-from src.dialogs.validators import validate_organizer_name
+from src.dialogs.validators import (
+    normalize_full_name,
+    normalize_phone,
+    validate_full_name,
+    validate_organizer_name,
+    validate_phone,
+)
+from src.enums.donor_type import DonorType
 from src.models.donor_day import DonorDay
 from src.models.organizer import Organizer
 from src.repositories.donation import DonationRepository
+from src.repositories.donor import DonorRepository
 from src.repositories.donor_day import DonorDayRepository
 from src.repositories.organizer import OrganizerRepository
 from src.services.notification_service import NotificationService
@@ -111,7 +120,7 @@ async def donor_data_management_handler(
     button: Button,
     dialog_manager: DialogManager,
 ) -> None:
-    await callback.answer("Управление данными доноров - в разработке")
+    await dialog_manager.switch_to(OrganizerSG.donor_data_management)
 
 
 async def statistics_management_handler(
@@ -128,6 +137,14 @@ async def communication_management_handler(
     dialog_manager: DialogManager,
 ) -> None:
     await callback.answer("Управление коммуникациями - в разработке")
+
+
+async def edit_donor_data_handler(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.donor_search_input)
 
 
 @inject
@@ -285,7 +302,10 @@ async def donor_day_datetime_input_handler(
     donor_day_repository: FromDishka[DonorDayRepository],
 ) -> None:
     try:
-        event_datetime = datetime.strptime(data.strip(), "%d.%m.%Y %H:%M")  # noqa: DTZ007
+        naive_datetime = datetime.strptime(data.strip(), "%d.%m.%Y %H:%M")  # noqa: DTZ007
+
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        event_datetime = naive_datetime.replace(tzinfo=moscow_tz)
     except ValueError:
         await message.answer(
             "❌ Неверный формат даты и времени. Используйте формат ДД.ММ.ГГГГ ЧЧ:ММ (например, 25.12.2024 14:30)"
@@ -327,8 +347,16 @@ async def get_organizer_donor_days_data(
 
     for i, donor_day in enumerate(donor_days, 1):
         event_date = donor_day.event_datetime.strftime("%d.%m.%Y %H:%M")
-        now = datetime.now(UTC)
-        status = "🟢 Активный" if donor_day.event_datetime > now else "🔴 Прошедший"
+
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        now_moscow = datetime.now(moscow_tz)
+
+        if donor_day.event_datetime.tzinfo is None:
+            event_moscow = donor_day.event_datetime.replace(tzinfo=moscow_tz)
+        else:
+            event_moscow = donor_day.event_datetime.astimezone(moscow_tz)
+
+        status = "🟢 Активный" if event_moscow > now_moscow else "🔴 Прошедший"
 
         display_text = f"{i}. 📅 {event_date} - {status}"
 
@@ -339,6 +367,348 @@ async def get_organizer_donor_days_data(
         "has_donor_days": len(donor_days_list) > 0,
         "use_scroll": len(donor_days_list) > 10,
     }
+
+
+@inject
+async def donor_search_input_handler(
+    message: Message,
+    widget: ManagedTextInput,
+    dialog_manager: DialogManager,
+    data: str,
+    donor_repository: FromDishka[DonorRepository],
+) -> None:
+    search_query = data.strip()
+
+    if not search_query:
+        await message.answer("Поисковый запрос не может быть пустым.")
+        return
+
+    if search_query.replace("+", "").replace("-", "").replace(" ", "").replace("(", "").replace(")", "").isdigit():
+        normalized_phone = normalize_phone(search_query)
+        donor = await donor_repository.get_registered_donor_by_phone(normalized_phone)
+
+        if donor:
+            dialog_manager.dialog_data["selected_donor_id"] = donor.id
+            await dialog_manager.switch_to(OrganizerSG.donor_edit_template)
+        else:
+            await message.answer("Донор с таким номером телефона не найден среди зарегистрированных пользователей.")
+    else:
+        donors = await donor_repository.get_registered_donors_by_full_name(search_query)
+
+        if not donors:
+            await message.answer("Доноры с таким ФИО не найдены среди зарегистрированных пользователей.")
+        elif len(donors) == 1:
+            dialog_manager.dialog_data["selected_donor_id"] = donors[0].id
+            await dialog_manager.switch_to(OrganizerSG.donor_edit_template)
+        else:
+            dialog_manager.dialog_data["found_donors"] = [
+                (donor.id, f"{donor.full_name} ({donor.phone_number})") for donor in donors
+            ]
+            await dialog_manager.switch_to(OrganizerSG.donor_selection)
+
+
+@inject
+async def get_donor_selection_data(dialog_manager: DialogManager, **kwargs: Any) -> dict[str, Any]:
+    found_donors = dialog_manager.dialog_data.get("found_donors", [])
+    return {"donors": found_donors, "has_donors": len(found_donors) > 0}
+
+
+@inject
+async def donor_selected(
+    callback: CallbackQuery, widget: Select, dialog_manager: DialogManager, item_id: str, **kwargs: Any
+) -> None:
+    donor_id = int(item_id)
+    dialog_manager.dialog_data["selected_donor_id"] = donor_id
+    await dialog_manager.switch_to(OrganizerSG.donor_edit_template)
+
+
+@inject
+async def get_donor_edit_template_data(
+    dialog_manager: DialogManager, donor_repository: FromDishka[DonorRepository], **kwargs: Any
+) -> dict[str, Any]:
+    donor_id = dialog_manager.dialog_data.get("selected_donor_id")
+    if not donor_id:
+        return {"error": "Донор не выбран"}
+
+    donor = await donor_repository.get_by_id(donor_id)
+    if not donor:
+        return {"error": "Донор не найден"}
+
+    donor_type_text = {
+        DonorType.STUDENT: "студент",
+        DonorType.EMPLOYEE: "сотрудник",
+        DonorType.EXTERNAL: "внешний",
+    }.get(donor.donor_type, "неизвестно")
+
+    template = f"""📝 **Шаблон для редактирования данных донора**
+
+Скопируйте текст ниже, отредактируйте нужные поля и отправьте обратно:
+
+---
+```
+ФИО: {donor.full_name}
+Телефон: {donor.phone_number}
+Тип: {donor_type_text}```"""
+
+    if donor.donor_type == DonorType.STUDENT and donor.student_group:
+        template += f"\nГруппа: {donor.student_group}"
+
+    template += "\n---"
+
+    return {"donor_name": donor.full_name, "template": template}
+
+
+@inject
+async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912
+    message: Message,
+    widget: ManagedTextInput,
+    dialog_manager: DialogManager,
+    data: str,
+    donor_repository: FromDishka[DonorRepository],
+) -> None:
+    donor_id = dialog_manager.dialog_data.get("selected_donor_id")
+    if not donor_id:
+        await message.answer("Ошибка: донор не выбран.")
+        return
+
+    lines = [line.strip() for line in data.strip().split("\n") if line.strip()]
+
+    parsed_data = {}
+    for line in lines:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+
+            if key in ["фио", "ф.и.о."]:
+                parsed_data["full_name"] = value
+            elif key in ["телефон", "номер", "номер телефона"]:
+                parsed_data["phone"] = value
+            elif key in ["тип", "тип донора"]:
+                parsed_data["donor_type"] = value
+            elif key in ["группа", "студенческая группа"]:
+                parsed_data["student_group"] = value
+
+    if "full_name" not in parsed_data:
+        await message.answer("Ошибка: не указано ФИО.")
+        return
+
+    if "phone" not in parsed_data:
+        await message.answer("Ошибка: не указан номер телефона.")
+        return
+
+    if "donor_type" not in parsed_data:
+        await message.answer("Ошибка: не указан тип донора.")
+        return
+
+    full_name_validation = validate_full_name(parsed_data["full_name"])
+    if not full_name_validation.is_valid:
+        await message.answer(full_name_validation.error_message)
+        return
+
+    phone_validation = validate_phone(parsed_data["phone"])
+    if not phone_validation.is_valid:
+        await message.answer(phone_validation.error_message)
+        return
+
+    donor_type_map = {"студент": DonorType.STUDENT, "сотрудник": DonorType.EMPLOYEE, "внешний": DonorType.EXTERNAL}
+
+    donor_type = donor_type_map.get(parsed_data["donor_type"].lower())
+    if not donor_type:
+        await message.answer("Ошибка: неверный тип донора. Допустимые значения: студент, сотрудник, внешний.")
+        return
+
+    student_group = None
+    if donor_type == DonorType.STUDENT:
+        if "student_group" not in parsed_data:
+            await message.answer("Ошибка: для студентов обязательно указание группы.")
+            return
+        student_group = parsed_data["student_group"]
+
+    normalized_full_name = normalize_full_name(parsed_data["full_name"])
+    normalized_phone = normalize_phone(parsed_data["phone"])
+
+    updated_donor = await donor_repository.update_donor_data(
+        donor_id=donor_id,
+        full_name=normalized_full_name,
+        phone_number=normalized_phone,
+        donor_type=donor_type,
+        student_group=student_group,
+    )
+
+    if updated_donor:
+        await message.answer("✅ Данные донора успешно обновлены!")
+        await dialog_manager.switch_to(OrganizerSG.donor_data_management)
+    else:
+        await message.answer("❌ Ошибка при обновлении данных донора.")
+
+
+async def back_to_donor_data_management(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.donor_data_management)
+
+
+async def back_to_donor_search(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.donor_search_input)
+
+
+async def show_edit_help(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.donor_edit_help)
+
+
+async def add_donors_handler(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.donor_add_input)
+
+
+async def show_add_help(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    await dialog_manager.switch_to(OrganizerSG.donor_add_help)
+
+
+@inject
+async def donor_add_input_handler(
+    message: Message,
+    widget: ManagedTextInput,
+    dialog_manager: DialogManager,
+    data: str,
+    donor_repository: FromDishka[DonorRepository],
+) -> None:
+    input_text = data.strip()
+
+    if not input_text:
+        await message.answer("Данные не могут быть пустыми.")
+        return
+
+    donor_blocks = [block.strip() for block in input_text.split("\n\n") if block.strip()]
+
+    if not donor_blocks:
+        await message.answer("Не найдено данных для добавления доноров.")
+        return
+
+    results = []
+    errors = []
+
+    for i, block in enumerate(donor_blocks, 1):
+        result = await process_single_donor_add(block, donor_repository, i)
+        if result["success"]:
+            results.append(result["message"])
+        else:
+            errors.append(result["message"])
+
+    response_parts = []
+
+    if results:
+        response_parts.append(f"✅ Успешно добавлено доноров: {len(results)}")
+        response_parts.extend(results)
+
+    if errors:
+        response_parts.append(f"\n❌ Ошибки ({len(errors)}):")
+        response_parts.extend(errors)
+
+    if not results and not errors:
+        response_parts.append("❌ Не удалось обработать ни одного донора.")
+
+    await message.answer("\n".join(response_parts))
+
+    if results:
+        await dialog_manager.switch_to(OrganizerSG.donor_data_management)
+
+
+async def process_single_donor_add(block: str, donor_repository: DonorRepository, donor_num: int) -> dict:  # noqa: PLR0911 PLR0912
+    lines = [line.strip() for line in block.split("\n") if line.strip()]
+
+    parsed_data = {}
+    for line in lines:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+
+            if key in ["фио", "ф.и.о."]:
+                parsed_data["full_name"] = value
+            elif key in ["телефон", "номер", "номер телефона"]:
+                parsed_data["phone"] = value
+            elif key in ["тип", "тип донора"]:
+                parsed_data["donor_type"] = value
+            elif key in ["группа", "студенческая группа"]:
+                parsed_data["student_group"] = value
+
+    if "full_name" not in parsed_data:
+        return {"success": False, "message": f"Донор {donor_num}: Не указано ФИО"}
+
+    if "phone" not in parsed_data:
+        return {"success": False, "message": f"Донор {donor_num}: Не указан номер телефона"}
+
+    if "donor_type" not in parsed_data:
+        return {"success": False, "message": f"Донор {donor_num}: Не указан тип донора"}
+
+    full_name_validation = validate_full_name(parsed_data["full_name"])
+    if not full_name_validation.is_valid:
+        return {"success": False, "message": f"Донор {donor_num}: {full_name_validation.error_message}"}
+
+    phone_validation = validate_phone(parsed_data["phone"])
+    if not phone_validation.is_valid:
+        return {"success": False, "message": f"Донор {donor_num}: {phone_validation.error_message}"}
+
+    donor_type_map = {"студент": DonorType.STUDENT, "сотрудник": DonorType.EMPLOYEE, "внешний": DonorType.EXTERNAL}
+
+    donor_type = donor_type_map.get(parsed_data["donor_type"].lower())
+    if not donor_type:
+        return {
+            "success": False,
+            "message": f"Донор {donor_num}: Неверный тип донора. Допустимые значения: студент, сотрудник, внешний",
+        }
+
+    student_group = None
+    if donor_type == DonorType.STUDENT:
+        if "student_group" not in parsed_data:
+            return {"success": False, "message": f"Донор {donor_num}: Для студентов обязательно указание группы"}
+        student_group = parsed_data["student_group"]
+
+    normalized_full_name = normalize_full_name(parsed_data["full_name"])
+    normalized_phone = normalize_phone(parsed_data["phone"])
+
+    existing_user = await donor_repository.get_user_by_phone_not_donor(normalized_phone)
+    if not existing_user:
+        return {
+            "success": False,
+            "message": (
+                f"Донор {donor_num}: Пользователь с телефоном {normalized_phone} не найден среди зарегистрированных "
+                "или уже является донором"
+            ),
+        }
+
+    new_donor = await donor_repository.create_donor_from_existing_user(
+        phone_number=normalized_phone,
+        full_name=normalized_full_name,
+        donor_type=donor_type,
+        student_group=student_group,
+    )
+
+    if new_donor:
+        return {
+            "success": True,
+            "message": f"Донор {donor_num}: {normalized_full_name} ({normalized_phone}) успешно добавлен",
+        }
+    return {"success": False, "message": f"Донор {donor_num}: Ошибка при добавлении в базу данных"}
 
 
 organizer_dialog = Dialog(
@@ -540,6 +910,20 @@ organizer_dialog = Dialog(
             "👥 **Управление данными доноров**\n\n• Редактирование данных доноров\n• "
             "Добавление данных доноров\n• Поиск и фильтрация"
         ),
+        Group(
+            Row(
+                Button(
+                    Const("✏️ Редактировать данные донора"),
+                    id="edit_donor_data",
+                    on_click=edit_donor_data_handler,
+                ),
+                Button(
+                    Const("➕ Добавить доноров"),
+                    id="add_donors",
+                    on_click=add_donors_handler,
+                ),
+            ),
+        ),
         Button(
             Const("🔙 Назад в меню"),
             id="back_to_menu",
@@ -570,5 +954,231 @@ organizer_dialog = Dialog(
             on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.organizer_menu),
         ),
         state=OrganizerSG.communication_management,
+    ),
+    Window(
+        Const("🔍 **Поиск донора для редактирования**\n\nВведите ФИО или номер телефона донора:"),
+        TextInput(
+            id="donor_search_input",
+            on_success=donor_search_input_handler,
+        ),
+        Button(
+            Const("🔙 Назад к управлению данными"),
+            id="back_to_donor_data_management",
+            on_click=back_to_donor_data_management,
+        ),
+        state=OrganizerSG.donor_search_input,
+    ),
+    Window(
+        Const("👥 **Выберите донора**\n\nНайдено несколько доноров с похожими данными:"),
+        ScrollingGroup(
+            Select(
+                Format("{item[1]}"),
+                items="donors",
+                item_id_getter=lambda item: str(item[0]),
+                id="donor_select",
+                on_click=donor_selected,
+            ),
+            id="donors_scroll",
+            width=1,
+            height=5,
+            when="has_donors",
+        ),
+        Const("Доноры не найдены.", when="!has_donors"),
+        Button(
+            Const("🔙 Назад к поиску"),
+            id="back_to_search",
+            on_click=back_to_donor_search,
+        ),
+        state=OrganizerSG.donor_selection,
+        getter=get_donor_selection_data,
+    ),
+    Window(
+        Format("👤 **Редактирование данных донора: {donor_name}**\n\n{template}"),
+        TextInput(
+            id="donor_edit_input",
+            on_success=donor_edit_input_handler,
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("❓ Помощь"),
+                    id="show_edit_help",
+                    on_click=show_edit_help,
+                ),
+                Button(
+                    Const("🔙 Назад к поиску"),
+                    id="back_to_search_from_template",
+                    on_click=back_to_donor_search,
+                ),
+            ),
+            Row(
+                Button(
+                    Const("🏠 К управлению данными"),
+                    id="back_to_management_from_template",
+                    on_click=back_to_donor_data_management,
+                ),
+            ),
+        ),
+        state=OrganizerSG.donor_edit_template,
+        getter=get_donor_edit_template_data,
+    ),
+    Window(
+        Const(
+            "❓ **Помощь по редактированию данных доноров**\n\n"
+            "📝 **Формат данных для редактирования:**\n\n"
+            "**ФИО:** Фамилия Имя Отчество\n"
+            "• Только буквы (русские или латинские)\n"
+            "• Минимум 2 слова (фамилия и имя)\n"
+            "• Максимум 4 слова\n"
+            "• Каждое слово от 2 до 30 букв\n"
+            "• Пример: `Иванов Иван Иванович`\n\n"
+            "**Телефон:** Номер телефона\n"
+            "• Российский номер (начинается с 7 или 8)\n"
+            "• От 10 до 11 цифр\n"
+            "• Можно использовать +, -, (, ), пробелы\n"
+            "• Примеры: `+79123456789`, `8-912-345-67-89`, `7 (912) 345-67-89`\n\n"
+            "**Тип:** Тип донора\n"
+            "• `студент` - для студентов (обязательно указать группу)\n"
+            "• `сотрудник` - для сотрудников учреждения\n"
+            "• `внешний` - для внешних доноров\n\n"
+            "**Группа:** Студенческая группа (только для студентов)\n"
+            "• Буквы, цифры, дефисы и точки\n"
+            "• От 2 до 20 символов\n"
+            "• Примеры: `ИТ-21`, `МЕД-3А`, `ЭК.19`\n\n"
+            "📋 **Пример правильного заполнения:**\n"
+            "```\n"
+            "ФИО: Петров Петр Петрович\n"
+            "Телефон: +79123456789\n"
+            "Тип: студент\n"
+            "Группа: ИТ-21\n"
+            "```\n\n"
+            "⚠️ **Важно:**\n"
+            "• Сохраняйте формат `Поле: Значение`\n"
+            "• Каждое поле на новой строке\n"
+            "• Не изменяйте названия полей\n"
+            "• Для сотрудников и внешних доноров группу не указывайте"
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("🔙 Назад к редактированию"),
+                    id="back_to_edit_template",
+                    on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.donor_edit_template),
+                ),
+                Button(
+                    Const("🏠 К управлению данными"),
+                    id="back_to_management_from_help",
+                    on_click=back_to_donor_data_management,
+                ),
+            ),
+        ),
+        state=OrganizerSG.donor_edit_help,
+    ),
+    Window(
+        Const(
+            "➕ **Добавление новых доноров**\n\n"
+            "Введите данные доноров в следующем формате.\n"
+            "Для добавления нескольких доноров разделяйте их пустой строкой:\n\n"
+            "📋 **Пример для одного донора:**\n"
+            "```\n"
+            "ФИО: Иванов Иван Иванович\n"
+            "Телефон: +79123456789\n"
+            "Тип: студент\n"
+            "Группа: ИТ-21\n"
+            "```\n\n"
+            "📋 **Пример для нескольких доноров:**\n"
+            "```\n"
+            "ФИО: Иванов Иван Иванович\n"
+            "Телефон: +79123456789\n"
+            "Тип: студент\n"
+            "Группа: ИТ-21\n\n"
+            "ФИО: Петров Петр Петрович\n"
+            "Телефон: +79987654321\n"
+            "Тип: сотрудник\n"
+            "```\n\n"
+            "⚠️ **Важно:** Добавлять можно только пользователей, которые уже зарегистрированы в боте!"
+        ),
+        TextInput(
+            id="donor_add_input",
+            on_success=donor_add_input_handler,
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("❓ Помощь"),
+                    id="show_add_help",
+                    on_click=show_add_help,
+                ),
+                Button(
+                    Const("🔙 Назад к управлению"),
+                    id="back_to_management_from_add",
+                    on_click=back_to_donor_data_management,
+                ),
+            ),
+        ),
+        state=OrganizerSG.donor_add_input,
+    ),
+    Window(
+        Const(
+            "❓ **Помощь по добавлению доноров**\n\n"
+            "📝 **Формат данных для добавления:**\n\n"
+            "**ФИО:** Фамилия Имя Отчество\n"
+            "• Только буквы (русские или латинские)\n"
+            "• Минимум 2 слова (фамилия и имя)\n"
+            "• Максимум 4 слова\n"
+            "• Каждое слово от 2 до 30 букв\n"
+            "• Пример: `Иванов Иван Иванович`\n\n"
+            "**Телефон:** Номер телефона\n"
+            "• Российский номер (начинается с 7 или 8)\n"
+            "• От 10 до 11 цифр\n"
+            "• Можно использовать +, -, (, ), пробелы\n"
+            "• Примеры: `+79123456789`, `8-912-345-67-89`, `7 (912) 345-67-89`\n\n"
+            "**Тип:** Тип донора\n"
+            "• `студент` - для студентов (обязательно указать группу)\n"
+            "• `сотрудник` - для сотрудников учреждения\n"
+            "• `внешний` - для внешних доноров\n\n"
+            "**Группа:** Студенческая группа (только для студентов)\n"
+            "• Буквы, цифры, дефисы и точки\n"
+            "• От 2 до 20 символов\n"
+            "• Примеры: `ИТ-21`, `МЕД-3А`, `ЭК.19`\n\n"
+            "📋 **Множественное добавление:**\n"
+            "• Разделяйте данные разных доноров пустой строкой\n"
+            "• Каждый донор должен содержать все обязательные поля\n"
+            "• Обработка происходит последовательно\n"
+            "• При ошибке в одном доноре, остальные все равно обрабатываются\n\n"
+            "📋 **Пример множественного добавления:**\n"
+            "```\n"
+            "ФИО: Иванов Иван Иванович\n"
+            "Телефон: +79123456789\n"
+            "Тип: студент\n"
+            "Группа: ИТ-21\n\n"
+            "ФИО: Петров Петр Петрович\n"
+            "Телефон: +79987654321\n"
+            "Тип: сотрудник\n\n"
+            "ФИО: Сидоров Сидор Сидорович\n"
+            "Телефон: +79111111111\n"
+            "Тип: внешний\n"
+            "```\n\n"
+            "⚠️ **Ограничения:**\n"
+            "• Можно добавлять только зарегистрированных пользователей\n"
+            "• Пользователь не должен быть донором\n"
+            "• Сохраняйте формат `Поле: Значение`\n"
+            "• Не изменяйте названия полей"
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("🔙 Назад к добавлению"),
+                    id="back_to_add_input",
+                    on_click=lambda c, b, dm: dm.switch_to(OrganizerSG.donor_add_input),
+                ),
+                Button(
+                    Const("🏠 К управлению данными"),
+                    id="back_to_management_from_add_help",
+                    on_click=back_to_donor_data_management,
+                ),
+            ),
+        ),
+        state=OrganizerSG.donor_add_help,
     ),
 )
