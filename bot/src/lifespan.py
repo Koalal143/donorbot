@@ -15,7 +15,7 @@ async def on_startup() -> None:
     await redis.ping()
 
     dp: Dispatcher = await container.get(Dispatcher)
-    setup_dishka(container, dp)
+    setup_dishka(container, dp, auto_inject=True)
     setup_dialogs(dp)
 
 
