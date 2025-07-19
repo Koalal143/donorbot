@@ -151,6 +151,7 @@ async def process_single_donor_add(block: str, donor_repository: DonorRepository
         full_name=normalized_full_name,
         donor_type=donor_type,
         student_group=student_group,
+        is_bone_marrow_donor=False,
     )
     new_donor = await donor_repository.create(new_donor)
 

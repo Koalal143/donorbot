@@ -9,6 +9,7 @@ class RegistrationSG(StatesGroup):
     patronymic_confirmation = State()
     donor_type_selection = State()
     student_group_input = State()
+    bone_marrow_donor_selection = State()
     privacy_consent = State()
     telegram_id_conflict = State()
 

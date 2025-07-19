@@ -70,7 +70,7 @@ async def get_profile_data(
             organizer = await organizer_repository.get_by_id(last_donation.organizer_id)
             last_donation_center = organizer.name if organizer else "Неизвестный центр"
 
-    bone_marrow_registry = "Не вступил"
+    bone_marrow_registry = "Вступил" if donor.is_bone_marrow_donor else "Не вступил"
 
     return {
         "full_name": donor.full_name,

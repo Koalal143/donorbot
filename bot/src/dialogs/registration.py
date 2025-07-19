@@ -197,7 +197,7 @@ async def donor_type_selected(
     if item_id == DonorType.STUDENT:
         await dialog_manager.switch_to(RegistrationSG.student_group_input)
     else:
-        await dialog_manager.switch_to(RegistrationSG.privacy_consent)
+        await dialog_manager.switch_to(RegistrationSG.bone_marrow_donor_selection)
 
 
 async def student_group_input_handler(
@@ -212,6 +212,24 @@ async def student_group_input_handler(
         return
 
     dialog_manager.dialog_data["student_group"] = data.strip().upper()
+    await dialog_manager.switch_to(RegistrationSG.bone_marrow_donor_selection)
+
+
+async def bone_marrow_donor_yes(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    dialog_manager.dialog_data["is_bone_marrow_donor"] = True
+    await dialog_manager.switch_to(RegistrationSG.privacy_consent)
+
+
+async def bone_marrow_donor_no(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    dialog_manager.dialog_data["is_bone_marrow_donor"] = False
     await dialog_manager.switch_to(RegistrationSG.privacy_consent)
 
 
@@ -226,6 +244,7 @@ async def privacy_consent_handler(
     full_name = dialog_manager.dialog_data.get("full_name")
     donor_type_str = dialog_manager.dialog_data.get("donor_type")
     student_group = dialog_manager.dialog_data.get("student_group")
+    is_bone_marrow_donor = dialog_manager.dialog_data.get("is_bone_marrow_donor", False)
 
     if not phone or not full_name or not donor_type_str:
         if callback.message:
@@ -251,6 +270,7 @@ async def privacy_consent_handler(
             donor_type=donor_type,
             student_group=student_group if donor_type == DonorType.STUDENT else None,
             telegram_id=telegram_id,
+            is_bone_marrow_donor=is_bone_marrow_donor,
         )
         await donor_repository.create(new_donor)
     elif not existing_donor.telegram_id:
@@ -450,6 +470,24 @@ registration_dialog = Dialog(
             on_success=student_group_input_handler,
         ),
         state=RegistrationSG.student_group_input,
+    ),
+    Window(
+        Const("🩸 Состоите ли вы в регистре доноров костного мозга (ДКМ)?"),
+        Group(
+            Row(
+                Button(
+                    Const("Да"),
+                    id="bone_marrow_yes",
+                    on_click=bone_marrow_donor_yes,
+                ),
+                Button(
+                    Const("Нет"),
+                    id="bone_marrow_no",
+                    on_click=bone_marrow_donor_no,
+                ),
+            ),
+        ),
+        state=RegistrationSG.bone_marrow_donor_selection,
     ),
     Window(
         Const("Даете ли вы согласие на обработку персональных данных?"),

@@ -1,4 +1,4 @@
-from sqlalchemy import Enum
+from sqlalchemy import Boolean, Enum
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import String
 
@@ -15,3 +15,4 @@ class Donor(Base):
     donor_type: Mapped[DonorType] = mapped_column(Enum(DonorType), nullable=False)
     student_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telegram_id: Mapped[int | None] = mapped_column(nullable=True)
+    is_bone_marrow_donor: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

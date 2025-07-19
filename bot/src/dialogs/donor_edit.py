@@ -97,6 +97,8 @@ async def get_donor_edit_template_data(
         DonorType.EXTERNAL: "внешний",
     }.get(donor.donor_type, "неизвестно")
 
+    bone_marrow_status = "да" if donor.is_bone_marrow_donor else "нет"
+
     template = f"""📝 **Шаблон для редактирования данных донора**
 
 Скопируйте текст ниже, отредактируйте нужные поля и отправьте обратно:
@@ -105,7 +107,8 @@ async def get_donor_edit_template_data(
 ```
 ФИО: {donor.full_name}
 Телефон: {donor.phone_number}
-Тип: {donor_type_text}```"""
+Тип: {donor_type_text}
+ДКМ: {bone_marrow_status}```"""
 
     if donor.donor_type == DonorType.STUDENT and donor.student_group:
         template += f"\nГруппа: {donor.student_group}"
@@ -116,7 +119,7 @@ async def get_donor_edit_template_data(
 
 
 @inject
-async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912
+async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912 PLR0915
     message: Message,
     widget: ManagedTextInput,
     dialog_manager: DialogManager,
@@ -126,6 +129,11 @@ async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912
     donor_id = dialog_manager.dialog_data.get("selected_donor_id")
     if not donor_id:
         await message.answer("Ошибка: донор не выбран.")
+        return
+
+    existing_donor = await donor_repository.get_by_id(donor_id)
+    if not existing_donor:
+        await message.answer("Ошибка: донор не найден.")
         return
 
     lines = [line.strip() for line in data.strip().split("\n") if line.strip()]
@@ -145,6 +153,8 @@ async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912
                 parsed_data["donor_type"] = value
             elif key in ["группа", "студенческая группа"]:
                 parsed_data["student_group"] = value
+            elif key in ["дкм", "костный мозг"]:
+                parsed_data["bone_marrow"] = value
 
     if "full_name" not in parsed_data:
         await message.answer("Ошибка: не указано ФИО.")
@@ -182,6 +192,14 @@ async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912
             return
         student_group = parsed_data["student_group"]
 
+    is_bone_marrow_donor = existing_donor.is_bone_marrow_donor
+    if "bone_marrow" in parsed_data:
+        bone_marrow_value = parsed_data["bone_marrow"].lower()
+        if bone_marrow_value in ["да", "yes", "true", "1"]:
+            is_bone_marrow_donor = True
+        elif bone_marrow_value in ["нет", "no", "false", "0"]:
+            is_bone_marrow_donor = False
+
     normalized_full_name = normalize_full_name(parsed_data["full_name"])
     normalized_phone = normalize_phone(parsed_data["phone"])
 
@@ -191,6 +209,7 @@ async def donor_edit_input_handler(  # noqa: PLR0911 PLR0912
         phone_number=normalized_phone,
         donor_type=donor_type,
         student_group=student_group,
+        is_bone_marrow_donor=is_bone_marrow_donor,
     )
 
     if updated_donor:

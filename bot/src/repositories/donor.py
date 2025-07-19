@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.enums.donor_type import DonorType
 from src.models.donor import Donor
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DonorRepository:
@@ -53,7 +59,14 @@ class DonorRepository:
         return result.first()
 
     async def update_donor_data(
-        self, donor_id: int, full_name: str, phone_number: str, donor_type: DonorType, student_group: str | None = None
+        self,
+        donor_id: int,
+        full_name: str,
+        phone_number: str,
+        donor_type: DonorType,
+        student_group: str | None = None,
+        *,
+        is_bone_marrow_donor: bool = False,
     ) -> Donor | None:
         donor = await self.get_by_id(donor_id)
         if donor:
@@ -61,6 +74,7 @@ class DonorRepository:
             donor.phone_number = phone_number
             donor.donor_type = donor_type
             donor.student_group = student_group if donor_type == DonorType.STUDENT else None
+            donor.is_bone_marrow_donor = is_bone_marrow_donor
             await self.session.commit()
             await self.session.refresh(donor)
         return donor
@@ -83,25 +97,43 @@ class DonorRepository:
         return result.first()
 
     async def convert_user_to_donor(
-        self, user_id: int, donor_type: DonorType, student_group: str | None = None
+        self,
+        user_id: int,
+        donor_type: DonorType,
+        student_group: str | None = None,
+        *,
+        is_bone_marrow_donor: bool = False,
     ) -> Donor | None:
         user = await self.get_by_id(user_id)
         if user and user.telegram_id and not user.donor_type:
             user.donor_type = donor_type
             user.student_group = student_group if donor_type == DonorType.STUDENT else None
+            user.is_bone_marrow_donor = is_bone_marrow_donor
             await self.session.commit()
             await self.session.refresh(user)
         return user
 
     async def create_donor_from_existing_user(
-        self, phone_number: str, full_name: str, donor_type: DonorType, student_group: str | None = None
+        self,
+        phone_number: str,
+        full_name: str,
+        donor_type: DonorType,
+        student_group: str | None = None,
+        *,
+        is_bone_marrow_donor: bool = False,
     ) -> Donor | None:
         existing_user = await self.get_user_by_phone_not_donor(phone_number)
         if existing_user:
             existing_user.full_name = full_name
             existing_user.donor_type = donor_type
             existing_user.student_group = student_group if donor_type == DonorType.STUDENT else None
+            existing_user.is_bone_marrow_donor = is_bone_marrow_donor
             await self.session.commit()
             await self.session.refresh(existing_user)
             return existing_user
         return None
+
+    async def get_bone_marrow_donors(self) -> list[Donor]:
+        query = select(Donor).where(Donor.is_bone_marrow_donor)
+        result = await self.session.scalars(query)
+        return list(result.all())
