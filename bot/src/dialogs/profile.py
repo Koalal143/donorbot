@@ -32,6 +32,7 @@ async def get_profile_data(
             "last_donation_center": "—",
             "donations_history": "—",
             "total_blood_donated": "—",
+            "bone_marrow_registry": "—",
         }
 
     donor = await donor_repository.get_by_phone_number(phone)
@@ -44,6 +45,7 @@ async def get_profile_data(
             "last_donation_center": "—",
             "donations_history": "—",
             "total_blood_donated": "—",
+            "bone_marrow_registry": "—",
         }
 
     mock_last_donation = datetime(1970, 1, 1, tzinfo=UTC)
@@ -56,6 +58,7 @@ async def get_profile_data(
         "last_donation_center": "—",
         "donations_history": "—",
         "total_blood_donated": "—",
+        "bone_marrow_registry": "—",
     }
 
 
@@ -68,7 +71,8 @@ profile_dialog = Dialog(
             "📅 **Последняя донация:** {last_donation_date}\n"
             "🏥 **Центр последней донации:** {last_donation_center}\n"
             "📋 **История донаций:** {donations_history}\n"
-            "🩸 **Всего крови сдано:** {total_blood_donated}"
+            "🩸 **Всего крови сдано:** {total_blood_donated}\n"
+            "🦴 **Вступил в регистр доноров костного мозга:** {bone_marrow_registry}"
         ),
         state=ProfileSG.profile_view,
         getter=get_profile_data,

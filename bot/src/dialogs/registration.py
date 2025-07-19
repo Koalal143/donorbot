@@ -30,10 +30,12 @@ async def phone_input_method_selected(
         await dialog_manager.switch_to(RegistrationSG.phone_input)
 
 
+@inject
 async def contact_shared(
     message: Message,
     widget: MessageInput,
     dialog_manager: DialogManager,
+    donor_repository: FromDishka[DonorRepository],
 ) -> None:
     if not message.contact:
         await message.answer("Пожалуйста, поделитесь контактом.")
@@ -62,7 +64,12 @@ async def contact_shared(
 
     await message.answer("✅ Контакт получен!", reply_markup=ReplyKeyboardRemove())
 
-    await dialog_manager.switch_to(RegistrationSG.name_input)
+    existing_donor = await donor_repository.get_by_phone_number(phone)
+    if existing_donor:
+        dialog_manager.dialog_data["existing_user"] = {"full_name": existing_donor.full_name}
+        await dialog_manager.switch_to(RegistrationSG.name_confirmation)
+    else:
+        await dialog_manager.switch_to(RegistrationSG.name_input)
 
 
 @inject
