@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from aiogram.types import CallbackQuery
@@ -9,6 +9,7 @@ from dishka import FromDishka
 from dishka.integrations.aiogram_dialog import inject
 
 from src.dialogs.states import DonorDayMenuSG, ProfileSG
+from src.repositories.content import ContentRepository
 from src.repositories.donation import DonationRepository
 from src.repositories.donor import DonorRepository
 from src.repositories.donor_day import DonorDayRepository
@@ -116,7 +117,8 @@ async def get_my_registrations_data(
 
         event_date = donor_day.event_datetime.strftime("%d.%m.%Y %H:%M")
 
-        now = datetime.now(UTC)
+        # Используем naive datetime для сравнения с БД
+        now = datetime.now()
         can_cancel = donor_day.event_datetime > now
 
         display_text = f"{i}. 📅 {event_date}"
@@ -326,15 +328,79 @@ async def go_to_donation_history(
     await dialog_manager.start(ProfileSG.donation_history, data={"phone": phone})
 
 
+async def go_to_information(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    phone = None
+    if dialog_manager.start_data and isinstance(dialog_manager.start_data, dict):
+        phone = dialog_manager.start_data.get("phone")
+    if not phone:
+        phone = dialog_manager.dialog_data.get("phone")
+
+    if not phone:
+        await callback.answer("Ошибка: не удалось получить данные пользователя")
+        return
+
+    await dialog_manager.start(ProfileSG.content_list, data={"phone": phone})
+
+
+# Обработчики для просмотра контента
+@inject
+async def get_all_content_data(
+    dialog_manager: DialogManager,
+    content_repository: FromDishka[ContentRepository],
+    **kwargs: Any,
+) -> dict[str, Any]:
+    content_items = await content_repository.get_all()
+    content_list = [
+        (content.id, f"{content.title[:60]}{'...' if len(content.title) > 60 else ''}") for content in content_items
+    ]
+
+    return {"content_items": content_list}
+
+
+async def user_content_selected(
+    callback: CallbackQuery,
+    widget: Select,
+    dialog_manager: DialogManager,
+    item_id: str,
+    **kwargs: Any,
+) -> None:
+    dialog_manager.dialog_data["selected_content_id"] = int(item_id)
+    await dialog_manager.switch_to(ProfileSG.content_view)
+
+
+@inject
+async def get_user_content_view_data(
+    dialog_manager: DialogManager,
+    content_repository: FromDishka[ContentRepository],
+    **kwargs: Any,
+) -> dict[str, Any]:
+    content_id = dialog_manager.dialog_data.get("selected_content_id")
+    if not content_id:
+        return {"title": "", "description": ""}
+
+    content = await content_repository.get_by_id(content_id)
+    if not content:
+        return {"title": "", "description": ""}
+
+    return {
+        "title": content.title,
+        "description": content.description,
+    }
+
+
 profile_dialog = Dialog(
     Window(
         Format(
-            "👤 **Профиль донора**\n\n"
-            "📝 **ФИО:** {full_name}\n"
-            "🩸 **Количество донаций:** {donations_count}\n"
-            "📅 **Последняя донация:** {last_donation_date}\n"
-            "🏥 **Центр последней донации:** {last_donation_center}\n"
-            "🦴 **Вступил в регистр доноров костного мозга:** {bone_marrow_registry}"
+            "👤 Профиль донора\n\n"
+            "📝 ФИО: {full_name}\n"
+            "🩸 Количество донаций: {donations_count}\n"
+            "📅 Последняя донация: {last_donation_date}\n"
+            "🏥 Центр последней донации: {last_donation_center}\n"
+            "🦴 Вступил в регистр доноров костного мозга: {bone_marrow_registry}"
         ),
         Group(
             Row(
@@ -343,13 +409,18 @@ profile_dialog = Dialog(
                     id="donor_day_menu",
                     on_click=go_to_donor_day_menu,
                 ),
+                Button(
+                    Const("ℹ️ Информация"),
+                    id="information",
+                    on_click=go_to_information,
+                ),
             ),
         ),
         state=ProfileSG.profile_view,
         getter=get_profile_data,
     ),
     Window(
-        Const("📋 **Мои регистрации на Дни донора**"),
+        Const("📋 Мои регистрации на Дни донора"),
         ScrollingGroup(
             Select(
                 Format("{item[1]}"),
@@ -377,7 +448,7 @@ profile_dialog = Dialog(
         getter=get_my_registrations_data,
     ),
     Window(
-        Format("❓ **Отмена регистрации**\n\n{registration_info}\n\nВы уверены, что хотите отменить регистрацию?"),
+        Format("❓ Отмена регистрации\n\n{registration_info}\n\nВы уверены, что хотите отменить регистрацию?"),
         Group(
             Row(
                 Button(
@@ -396,7 +467,7 @@ profile_dialog = Dialog(
         getter=get_cancel_registration_data,
     ),
     Window(
-        Const("📊 **История донаций**"),
+        Const("📊 История донаций"),
         ScrollingGroup(
             Select(
                 Format("{item[1]}"),
@@ -422,5 +493,46 @@ profile_dialog = Dialog(
         ),
         state=ProfileSG.donation_history,
         getter=get_donation_history_data,
+    ),
+    # Окна для просмотра контента
+    Window(
+        Const("ℹ️ Информационные материалы\n\nВыберите статью для чтения:"),
+        ScrollingGroup(
+            Select(
+                Format("{item[1]}"),
+                items="content_items",
+                item_id_getter=lambda item: str(item[0]),
+                id="user_content_select",
+                on_click=user_content_selected,
+            ),
+            id="user_content_scroll",
+            width=1,
+            height=6,
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("🔙 Назад к профилю"),
+                    id="back_to_profile_from_content",
+                    on_click=lambda c, b, dm: dm.done(),
+                ),
+            ),
+        ),
+        state=ProfileSG.content_list,
+        getter=get_all_content_data,
+    ),
+    Window(
+        Format("📄 {title}\n\n{description}"),
+        Group(
+            Row(
+                Button(
+                    Const("🔙 К списку статей"),
+                    id="back_to_content_list_user",
+                    on_click=lambda c, b, dm: dm.switch_to(ProfileSG.content_list),
+                ),
+            ),
+        ),
+        state=ProfileSG.content_view,
+        getter=get_user_content_view_data,
     ),
 )

@@ -92,7 +92,7 @@ async def back_to_profile(
 
 donor_day_menu_dialog = Dialog(
     Window(
-        Const("🩸 **Меню День донора**\n\nВыберите действие:"),
+        Const("🩸 Меню Дня донора\n\nВыберите действие:"),
         Group(
             Row(
                 Button(

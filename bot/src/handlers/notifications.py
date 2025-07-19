@@ -35,7 +35,7 @@ async def confirm_account_change_handler(
 
         await callback.answer("✅ Смена аккаунта подтверждена!")
         await callback.message.edit_text(
-            f"✅ **Смена аккаунта подтверждена**\n\nАккаунт для пользователя **{donor.full_name}** успешно обновлен."
+            f"✅ Смена аккаунта подтверждена\n\nАккаунт для пользователя {donor.full_name} успешно обновлен."
         )
     else:
         await callback.answer("❌ Ошибка при обновлении аккаунта")
@@ -55,7 +55,7 @@ async def reject_account_change_handler(
 
     await callback.answer("❌ Смена аккаунта отклонена!")
     await callback.message.edit_text(
-        f"❌ **Смена аккаунта отклонена**\n\nПопытка смены аккаунта для пользователя **{donor.full_name}** отклонена."
+        f"❌ Смена аккаунта отклонена\n\nПопытка смены аккаунта для пользователя {donor.full_name} отклонена."
     )
 
 

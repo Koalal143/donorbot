@@ -6,6 +6,7 @@ from src.di.providers import (
     DatabaseProvider,
     RedisProvider,
     RepositoryProvider,
+    ServicesProvider,
     TelegramBotProvider,
     WebhookProvider,
 )
@@ -15,6 +16,7 @@ container = make_async_container(
     DatabaseProvider(),
     RedisProvider(),
     RepositoryProvider(),
+    ServicesProvider(),
     AiogramProvider(),
     TelegramBotProvider(),
     WebhookProvider(),

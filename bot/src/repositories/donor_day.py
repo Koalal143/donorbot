@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,8 +19,10 @@ class DonorDayRepository:
         return donor_day
 
     async def get_all_upcoming(self) -> Sequence[DonorDay]:
+        # Используем naive datetime для сравнения с БД
+        now_naive = datetime.now()
         result = await self.session.scalars(
-            select(DonorDay).where(DonorDay.event_datetime >= datetime.now(UTC)).order_by(DonorDay.event_datetime.asc())
+            select(DonorDay).where(DonorDay.event_datetime >= now_naive).order_by(DonorDay.event_datetime.asc())
         )
         return result.all()
 
@@ -31,6 +33,16 @@ class DonorDayRepository:
     async def get_by_organizer_id(self, organizer_id: int) -> Sequence[DonorDay]:
         result = await self.session.scalars(
             select(DonorDay).where(DonorDay.organizer_id == organizer_id).order_by(DonorDay.event_datetime.asc())
+        )
+        return result.all()
+
+    async def get_past_by_organizer_id(self, organizer_id: int) -> Sequence[DonorDay]:
+        """Получить прошедшие донорские дни организатора"""
+        now_naive = datetime.now()
+        result = await self.session.scalars(
+            select(DonorDay)
+            .where(DonorDay.organizer_id == organizer_id, DonorDay.event_datetime < now_naive)
+            .order_by(DonorDay.event_datetime.desc())
         )
         return result.all()
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -143,13 +143,15 @@ class DonorRepository:
 
     async def get_donors_registered_for_upcoming_donor_day(self, organizer_id: int) -> list[Donor]:
         """Получить доноров, зарегистрированных на ближайшую дату ДД конкретного организатора"""
+        # Используем naive datetime для сравнения с БД
+        now_naive = datetime.now()
         query = (
             select(Donor)
             .join(Donation, Donor.id == Donation.donor_id)
             .join(DonorDay, Donation.donor_day_id == DonorDay.id)
             .where(
                 DonorDay.organizer_id == organizer_id,
-                DonorDay.event_datetime >= datetime.now(UTC),
+                DonorDay.event_datetime >= now_naive,
                 Donor.telegram_id.is_not(None),
             )
             .distinct()
@@ -166,11 +168,13 @@ class DonorRepository:
             .distinct()
         )
 
+        # Используем naive datetime для сравнения с БД
+        now_naive = datetime.now()
         registered_for_upcoming_query = (
             select(Donor.id)
             .join(Donation, Donor.id == Donation.donor_id)
             .join(DonorDay, Donation.donor_day_id == DonorDay.id)
-            .where(DonorDay.organizer_id == organizer_id, DonorDay.event_datetime >= datetime.now(UTC))
+            .where(DonorDay.organizer_id == organizer_id, DonorDay.event_datetime >= now_naive)
             .distinct()
         )
 
@@ -188,3 +192,12 @@ class DonorRepository:
         )
         result = await self.session.scalars(query)
         return list(result.all())
+
+    async def update_bone_marrow_status(self, donor_id: int, is_bone_marrow_donor: bool) -> bool:
+        """Обновить статус донора костного мозга"""
+        donor = await self.session.get(Donor, donor_id)
+        if donor:
+            donor.is_bone_marrow_donor = is_bone_marrow_donor
+            await self.session.commit()
+            return True
+        return False

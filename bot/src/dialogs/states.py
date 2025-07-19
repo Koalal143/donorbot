@@ -37,6 +37,27 @@ class OrganizerSG(StatesGroup):
     mailing_category_selection = State()
     mailing_message_input = State()
     mailing_confirmation = State()
+    excel_generation_processing = State()
+    excel_generation_result = State()
+
+    donors_excel_generation_processing = State()
+    donors_excel_generation_result = State()
+
+    # Редактирование прошедших ДД
+    past_donor_days_list = State()
+    donor_day_participants = State()
+    add_participant = State()
+    participant_phone_input = State()
+    participant_confirmation = State()
+    edit_participant_status = State()
+
+    # Управление контентом (организатор) - дополнительные состояния
+    content_list = State()
+    content_add_title = State()
+    content_add_description = State()
+    content_confirm = State()
+    content_view = State()
+    content_delete_confirm = State()
 
 
 class ProfileSG(StatesGroup):
@@ -44,6 +65,10 @@ class ProfileSG(StatesGroup):
     my_registrations = State()
     cancel_registration = State()
     donation_history = State()
+
+    # Просмотр информационного контента
+    content_list = State()
+    content_view = State()
 
 
 class DonorDayMenuSG(StatesGroup):

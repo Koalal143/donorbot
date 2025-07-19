@@ -1,6 +1,7 @@
 from dishka import Provider, Scope, provide
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.repositories.content import ContentRepository
 from src.repositories.donation import DonationRepository
 from src.repositories.donor import DonorRepository
 from src.repositories.donor_day import DonorDayRepository
@@ -25,3 +26,7 @@ class RepositoryProvider(Provider):
     @provide
     def get_donor_day_repository(self, session: AsyncSession) -> DonorDayRepository:
         return DonorDayRepository(session)
+
+    @provide
+    def get_content_repository(self, session: AsyncSession) -> ContentRepository:
+        return ContentRepository(session)
