@@ -2,6 +2,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class RegistrationSG(StatesGroup):
+    phone_input_method = State()
     phone_input = State()
     name_confirmation = State()
     name_input = State()

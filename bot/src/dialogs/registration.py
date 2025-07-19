@@ -1,8 +1,9 @@
 from typing import Any
 
-from aiogram.types import CallbackQuery, Message
+from aiogram import F
+from aiogram.types import CallbackQuery, Contact, KeyboardButton, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiogram_dialog import Dialog, DialogManager, Window
-from aiogram_dialog.widgets.input import ManagedTextInput, TextInput
+from aiogram_dialog.widgets.input import ManagedTextInput, MessageInput, TextInput
 from aiogram_dialog.widgets.kbd import Button, Group, Row, Select
 from aiogram_dialog.widgets.text import Const, Format
 from dishka import FromDishka
@@ -13,6 +14,55 @@ from src.dialogs.validators import normalize_phone, validate_full_name, validate
 from src.enums.donor_type import DonorType
 from src.models.donor import Donor
 from src.repositories.donor import DonorRepository
+
+
+async def phone_input_method_selected(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    button_id = button.widget_id
+    if button_id == "share_contact":
+        dialog_manager.dialog_data["input_method"] = "contact"
+        await dialog_manager.switch_to(RegistrationSG.phone_input)
+    elif button_id == "manual_input":
+        dialog_manager.dialog_data["input_method"] = "manual"
+        await dialog_manager.switch_to(RegistrationSG.phone_input)
+
+
+async def contact_shared(
+    message: Message,
+    widget: MessageInput,
+    dialog_manager: DialogManager,
+) -> None:
+    if not message.contact:
+        await message.answer("Пожалуйста, поделитесь контактом.")
+        return
+
+    contact: Contact = message.contact
+    phone = contact.phone_number
+
+    if not phone:
+        await message.answer("Не удалось получить номер телефона из контакта.")
+        return
+
+    if phone.strip() == "admin":
+        await dialog_manager.start(OrganizerSG.organizer_selection)
+        return
+
+    validation_result = validate_phone(phone)
+    if not validation_result.is_valid:
+        dialog_manager.dialog_data["phone_retry"] = True
+        await message.answer(validation_result.error_message)
+        return
+
+    phone = normalize_phone(phone)
+    dialog_manager.dialog_data["phone"] = phone
+    dialog_manager.dialog_data.pop("phone_retry", None)
+
+    await message.answer("✅ Контакт получен!", reply_markup=ReplyKeyboardRemove())
+
+    await dialog_manager.switch_to(RegistrationSG.name_input)
 
 
 @inject
@@ -36,6 +86,8 @@ async def phone_input_handler(
     phone = normalize_phone(data)
     dialog_manager.dialog_data["phone"] = phone
     dialog_manager.dialog_data.pop("phone_retry", None)
+
+    await message.answer("✅ Номер телефона получен!", reply_markup=ReplyKeyboardRemove())
 
     existing_donor = await donor_repository.get_by_phone_number(phone)
     if existing_donor:
@@ -64,7 +116,7 @@ async def name_confirmation_no(
     dialog_manager.dialog_data.pop("phone", None)
     dialog_manager.dialog_data.pop("existing_user", None)
     dialog_manager.dialog_data["phone_retry"] = True
-    await dialog_manager.switch_to(RegistrationSG.phone_input)
+    await dialog_manager.switch_to(RegistrationSG.phone_input_method)
 
 
 async def name_input_handler(
@@ -180,11 +232,19 @@ async def get_name_confirmation_data(dialog_manager: DialogManager, **kwargs: An
     return {"full_name": existing_user.get("full_name", "")}
 
 
+def create_contact_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Поделиться контактом", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 async def get_phone_input_data(dialog_manager: DialogManager, **kwargs: Any) -> dict[str, Any]:
     is_retry = dialog_manager.dialog_data.get("phone_retry", False)
     if is_retry:
-        return {"welcome_text": "Введите корректный номер телефона:"}
-    return {"welcome_text": "Добро пожаловать! Введите ваш номер телефона:"}
+        return {"welcome_text": "Пожалуйста, введите корректный номер телефона:"}
+    return {"welcome_text": "Введите ваш номер телефона:"}
 
 
 async def get_donor_types(**kwargs: Any) -> dict[str, Any]:
@@ -197,9 +257,50 @@ async def get_donor_types(**kwargs: Any) -> dict[str, Any]:
     }
 
 
+async def show_contact_keyboard(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    if callback.message:
+        await callback.message.answer(
+            "Нажмите кнопку ниже, чтобы поделиться контактом:", reply_markup=create_contact_keyboard()
+        )
+
+
 registration_dialog = Dialog(
     Window(
-        Format("{welcome_text}"),
+        Const("Добро пожаловать! Выберите способ ввода номера телефона:"),
+        Group(
+            Row(
+                Button(
+                    Const("📱 Поделиться контактом"),
+                    id="share_contact",
+                    on_click=phone_input_method_selected,
+                ),
+            ),
+            Row(
+                Button(
+                    Const("⌨️ Ввести вручную"),
+                    id="manual_input",
+                    on_click=phone_input_method_selected,
+                ),
+            ),
+        ),
+        state=RegistrationSG.phone_input_method,
+    ),
+    Window(
+        Format("📱 Поделитесь своим контактом или введите номер вручную:\n\n{welcome_text}"),
+        Group(
+            Row(
+                Button(
+                    Const("📱 Показать клавиатуру для контакта"),
+                    id="show_contact_keyboard",
+                    on_click=show_contact_keyboard,
+                ),
+            ),
+        ),
+        MessageInput(contact_shared, filter=F.contact),
         TextInput(
             id="phone_input",
             on_success=phone_input_handler,
