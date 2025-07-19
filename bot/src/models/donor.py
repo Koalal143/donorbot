@@ -14,3 +14,4 @@ class Donor(Base):
     phone_number: Mapped[str] = mapped_column(String(255), nullable=False)
     donor_type: Mapped[DonorType] = mapped_column(Enum(DonorType), nullable=False)
     student_group: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telegram_id: Mapped[int | None] = mapped_column(nullable=True)

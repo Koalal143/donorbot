@@ -14,6 +14,7 @@ from src.dialogs.validators import normalize_phone, validate_full_name, validate
 from src.enums.donor_type import DonorType
 from src.models.donor import Donor
 from src.repositories.donor import DonorRepository
+from src.services.notification_service import NotificationService
 
 
 async def phone_input_method_selected(
@@ -66,8 +67,18 @@ async def contact_shared(
 
     existing_donor = await donor_repository.get_by_phone_number(phone)
     if existing_donor:
-        dialog_manager.dialog_data["existing_user"] = {"full_name": existing_donor.full_name}
-        await dialog_manager.switch_to(RegistrationSG.name_confirmation)
+        current_telegram_id = message.from_user.id
+        if existing_donor.telegram_id and existing_donor.telegram_id != current_telegram_id:
+            dialog_manager.dialog_data["existing_user"] = {
+                "full_name": existing_donor.full_name,
+                "donor_id": existing_donor.id,
+                "old_telegram_id": existing_donor.telegram_id,
+                "new_telegram_id": current_telegram_id,
+            }
+            await dialog_manager.switch_to(RegistrationSG.telegram_id_conflict)
+        else:
+            dialog_manager.dialog_data["existing_user"] = {"full_name": existing_donor.full_name}
+            await dialog_manager.switch_to(RegistrationSG.name_confirmation)
     else:
         await dialog_manager.switch_to(RegistrationSG.name_input)
 
@@ -98,8 +109,18 @@ async def phone_input_handler(
 
     existing_donor = await donor_repository.get_by_phone_number(phone)
     if existing_donor:
-        dialog_manager.dialog_data["existing_user"] = {"full_name": existing_donor.full_name}
-        await dialog_manager.switch_to(RegistrationSG.name_confirmation)
+        current_telegram_id = message.from_user.id
+        if existing_donor.telegram_id and existing_donor.telegram_id != current_telegram_id:
+            dialog_manager.dialog_data["existing_user"] = {
+                "full_name": existing_donor.full_name,
+                "donor_id": existing_donor.id,
+                "old_telegram_id": existing_donor.telegram_id,
+                "new_telegram_id": current_telegram_id,
+            }
+            await dialog_manager.switch_to(RegistrationSG.telegram_id_conflict)
+        else:
+            dialog_manager.dialog_data["existing_user"] = {"full_name": existing_donor.full_name}
+            await dialog_manager.switch_to(RegistrationSG.name_confirmation)
     else:
         await dialog_manager.switch_to(RegistrationSG.name_input)
 
@@ -112,7 +133,7 @@ async def name_confirmation_yes(
     phone = dialog_manager.dialog_data.get("phone")
 
     await callback.answer("✅ Регистрация завершена! Добро пожаловать в систему.")
-    await dialog_manager.start(ProfileSG.profile_view, data={"phone": phone, "just_registered": False})
+    await dialog_manager.start(ProfileSG.profile_view, data={"phone": phone})
 
 
 async def name_confirmation_no(
@@ -222,16 +243,23 @@ async def privacy_consent_handler(
 
     existing_donor = await donor_repository.get_by_phone_number(phone)
     if not existing_donor:
+        telegram_id = callback.from_user.id if callback.from_user else None
+
         new_donor = Donor(
             full_name=full_name,
             phone_number=phone,
             donor_type=donor_type,
             student_group=student_group if donor_type == DonorType.STUDENT else None,
+            telegram_id=telegram_id,
         )
         await donor_repository.create(new_donor)
+    elif not existing_donor.telegram_id:
+        telegram_id = callback.from_user.id if callback.from_user else None
+        if telegram_id:
+            await donor_repository.update_telegram_id(existing_donor.id, telegram_id)
 
     await callback.answer("✅ Регистрация завершена! Добро пожаловать в систему.")
-    await dialog_manager.start(ProfileSG.profile_view, data={"phone": phone, "just_registered": False})
+    await dialog_manager.start(ProfileSG.profile_view, data={"phone": phone})
 
 
 async def get_name_confirmation_data(dialog_manager: DialogManager, **kwargs: Any) -> dict[str, Any]:
@@ -262,6 +290,49 @@ async def get_donor_types(**kwargs: Any) -> dict[str, Any]:
             (DonorType.EXTERNAL, "Внешний донор"),
         ]
     }
+
+
+async def get_telegram_id_conflict_data(dialog_manager: DialogManager, **kwargs: Any) -> dict[str, Any]:
+    existing_user = dialog_manager.dialog_data.get("existing_user", {})
+    return {
+        "full_name": existing_user.get("full_name", ""),
+        "old_telegram_id": existing_user.get("old_telegram_id", ""),
+        "new_telegram_id": existing_user.get("new_telegram_id", ""),
+    }
+
+
+@inject
+async def confirm_telegram_id_change(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+    donor_repository: FromDishka[DonorRepository],
+) -> None:
+    existing_user = dialog_manager.dialog_data.get("existing_user", {})
+    donor_id = existing_user.get("donor_id")
+    new_telegram_id = existing_user.get("new_telegram_id")
+    old_telegram_id = existing_user.get("old_telegram_id")
+    full_name = existing_user.get("full_name")
+
+    if not donor_id or not new_telegram_id:
+        await callback.answer("Ошибка: не удалось получить данные донора")
+        return
+    bot = dialog_manager.middleware_data.get("bot")
+    if bot and old_telegram_id:
+        notification_service = NotificationService(bot)
+        await notification_service.send_account_change_notification(old_telegram_id, full_name, new_telegram_id)
+
+    await callback.answer("✅ Запрос на смену аккаунта отправлен! Ожидайте подтверждения.")
+    await dialog_manager.switch_to(RegistrationSG.phone_input_method)
+
+
+async def cancel_telegram_id_change(
+    callback: CallbackQuery,
+    button: Button,
+    dialog_manager: DialogManager,
+) -> None:
+    dialog_manager.dialog_data.clear()
+    await dialog_manager.switch_to(RegistrationSG.phone_input_method)
 
 
 async def show_contact_keyboard(
@@ -388,5 +459,30 @@ registration_dialog = Dialog(
             on_click=privacy_consent_handler,
         ),
         state=RegistrationSG.privacy_consent,
+    ),
+    Window(
+        Format(
+            "⚠️ **Обнаружен другой аккаунт**\n\n"
+            "Пользователь с фамилией **{full_name}** уже зарегистрирован в системе.\n\n"
+            "Старый Telegram ID: `{old_telegram_id}`\n"
+            "Новый Telegram ID: `{new_telegram_id}`\n\n"
+            "Хотите ли вы обновить привязку к новому аккаунту?"
+        ),
+        Group(
+            Row(
+                Button(
+                    Const("✅ Да, обновить"),
+                    id="confirm_telegram_change",
+                    on_click=confirm_telegram_id_change,
+                ),
+                Button(
+                    Const("❌ Нет, отменить"),
+                    id="cancel_telegram_change",
+                    on_click=cancel_telegram_id_change,
+                ),
+            ),
+        ),
+        state=RegistrationSG.telegram_id_conflict,
+        getter=get_telegram_id_conflict_data,
     ),
 )
